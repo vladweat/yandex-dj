@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from app.api.deps import get_auth_service
+from app.api.deps import get_auth_service, get_current_session
 from app.core.security import decrypt_token
 from app.db.models.session import Session
 from app.db.models.user import User
@@ -178,6 +178,40 @@ async def test_yandex_music_service_resolve_account() -> None:
     assert login == "testuser"
     service.init_client.assert_awaited_once_with("ya-token")
     service.get_account_status.assert_awaited_once_with(mock_client)
+
+
+@pytest.mark.asyncio
+async def test_auth_me_returns_profile() -> None:
+    user = User(id=uuid4(), yandex_uid=42, login="testuser")
+    session = Session(
+        id=uuid4(),
+        user_id=user.id,
+        encrypted_token="encrypted",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    session.user = user
+    app.dependency_overrides[get_current_session] = lambda: session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {session.id}"},
+        )
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 200
+    data = response.json()
+    assert data["login"] == "testuser"
+    assert data["yandex_uid"] == 42
+    assert data["session_id"] == str(session.id)
+
+
+@pytest.mark.asyncio
+async def test_auth_me_unauthorized_without_header() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/auth/me")
+
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio

@@ -9,10 +9,11 @@
 | Подсистема | Технологии |
 |------------|------------|
 | Бэкенд | **FastAPI** + uvicorn (`backend/`) |
+| Frontend | **Next.js 15** + Tailwind 4 + shadcn (`frontend/`, каркас из docwise) |
 | LLM | OpenAI + `instructor` |
 | Embeddings | `sentence-transformers`, `numpy` |
 | БД | PostgreSQL 15 + SQLAlchemy |
-| Dev | `ruff`, `pytest`, `click` |
+| Dev | `ruff`, `pytest`, `click`, `vitest` |
 
 Полный список: [docs/STACK.md](docs/STACK.md)
 
@@ -38,19 +39,16 @@ uvicorn app.main:app --reload
 ```
 yandex-dj/
 ├── backend/
-│   ├── app/
-│   │   ├── api/        # endpoints, deps
-│   │   ├── core/       # config, security
-│   │   ├── services/   # бизнес-логика
-│   │   ├── schemas/
-│   │   ├── repositories/
-│   │   └── db/
+│   ├── app/            # FastAPI (api, services, schemas, db)
 │   ├── tests/
-│   ├── Dockerfile          # offline: COPY site-packages
+│   ├── Dockerfile      # offline: COPY site-packages
 │   └── pyproject.toml
+├── frontend/           # Next.js (порт из docwise)
+│   └── src/
+│       ├── app/
+│       ├── features/
+│       └── components/
 ├── scripts/
-│   ├── build-venv.sh
-│   └── pack-offline-bundle.sh
 ├── Makefile
 ├── docs/
 └── docker-compose.yml
@@ -63,6 +61,9 @@ yandex-dj/
 | [STACK.md](docs/STACK.md) | Зафиксированный стек |
 | [SPEC.md](docs/SPEC.md) | Техническое задание |
 | [API.md](docs/API.md) | REST API контракты |
+| [FRONTEND.md](docs/FRONTEND.md) | UI/UX, маршруты, Device Flow |
+| [REUSE_FROM_DOCWISE.md](docs/REUSE_FROM_DOCWISE.md) | Карта порта из docwise |
+| [CONVENTIONS.md](docs/CONVENTIONS.md) | Слои backend и frontend |
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Roadmap |
 
 ## Лицензия

@@ -7,7 +7,9 @@ alwaysApply: true
 
 Сервис генерации плейлистов: промпт → MusicProfile → retrieval → scoring → export.
 
-Документы: `docs/SPEC.md`, `docs/STACK.md`. Latency: **7–12 сек**.
+Документы: `docs/SPEC.md`, `docs/STACK.md`, `docs/FRONTEND.md`. Latency: **7–12 сек**.
+
+Frontend: Next.js 15 (каркас из `../docwise`), Bearer `session_id`, см. `docs/REUSE_FROM_DOCWISE.md`.
 
 ## Слои FastAPI (`backend/app/`)
 

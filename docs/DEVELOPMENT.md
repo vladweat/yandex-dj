@@ -11,9 +11,10 @@
 | Docker | ✅ `prompt-dj-api` + `prompt-dj-db` (PostgreSQL 15) |
 | FastAPI | ✅ `/api/v1/health` → `200 ok` |
 | Auth / Playlists | ✅ Auth реализован; Playlists — `501` |
+| Frontend | ⏳ каркас из docwise — [FRONTEND.md](FRONTEND.md); временно `GET /test/auth` |
 | Пайплайн (LLM → export) | ❌ сервисы — заглушки |
 
-**Следующий шаг:** применить миграции и проверить Device Flow; затем Этап 2 (LLM Engine).
+**Следующий шаг:** скелет `frontend/` (docwise); параллельно — Этап 2 (LLM Engine).
 
 ---
 
@@ -81,6 +82,24 @@ make migrate && make auth-poll
 
 Через API — те же шаги: `POST .../start` → подтверждение на телефоне → `POST .../poll`.
 
+Через UI: `GET /test/auth` (временно) или `/login` в Next.js после этапа 1.5.
+
+---
+
+## Этап 1.5. Frontend (каркас из docwise)
+
+**Цель:** Next.js UI с Device Flow и экраном генерации (заглушка до готового пайплайна).
+
+- [x] `frontend/` — скелет по [REUSE_FROM_DOCWISE.md](REUSE_FROM_DOCWISE.md)
+- [x] `components/ui`, `layout`, `query-provider`, `toast-host`
+- [x] `lib/api.ts` — Bearer `session_id`, `fetchMe`, Device Flow
+- [x] `features/auth` — `/login`, gates, `auth-provider`
+- [x] `features/playlist` — форма промпта, заглушка результата
+- [x] `docker-compose` сервис `frontend`, `make deps-frontend` / `up-frontend`
+- [x] Удалить `backend/app/static/auth-test.html` и `GET /test/auth`
+
+**Проверка:** `http://localhost:3001/login` → Device Flow → профиль в header; `/` — форма промпта.
+
 ---
 
 ## Этап 2. LLM Engine
@@ -141,7 +160,6 @@ make migrate && make auth-poll
 
 ## Этап 6. Backlog
 
-- [ ] Next.js фронтенд
 - [ ] Telegram-бот (`aiogram`)
 - [ ] BPM-анализ (`librosa`)
 - [ ] AI-обложка, анализ lyrics
@@ -154,7 +172,8 @@ make migrate && make auth-poll
 | Инструмент | Статус |
 |------------|--------|
 | `ruff` | ✅ в `pyproject.toml` |
-| `pytest` | ⏳ тест `test_health.py`; dev-зависимости — `pip install ".[dev]"` |
+| `pytest` | ✅ auth + health; dev — `pip install ".[dev]"` |
+| `vitest` / `tsc` | ⏳ после `frontend/` |
 | CI (`.github/`) | ❌ не настроен |
 
 ```bash

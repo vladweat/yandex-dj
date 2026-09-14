@@ -42,16 +42,30 @@
 
 Embeddings подключаются **сразу** (не откладываются на поздний этап).
 
-## Бэкенд и UI
+## Бэкенд
 
 | Компонент | Выбор |
 |-----------|-------|
 | Framework | **FastAPI** |
 | ASGI-сервер | **uvicorn** |
 | CLI (вспомогательный) | **click** |
-| UI (первый) | **FastAPI** (REST + Swagger) |
 
-Telegram-бот и Next.js — в backlog, не MVP.
+## Frontend
+
+| Компонент | Выбор |
+|-----------|-------|
+| Framework | **Next.js 15** (App Router) |
+| UI | **React 19**, **TypeScript 5**, **Tailwind CSS 4** |
+| Компоненты | **shadcn/ui** (Radix) |
+| Состояние | **TanStack Query** + **Zustand** |
+| Тесты UI | **Vitest** |
+| Каркас | Порт из **docwise** ([REUSE_FROM_DOCWISE.md](REUSE_FROM_DOCWISE.md)) |
+
+Авторизация UI: Bearer `session_id` (Device Flow), не cookie. Подробнее: [FRONTEND.md](FRONTEND.md).
+
+Временно: `GET /test/auth` (статическая HTML в FastAPI) — до появления `frontend/`.
+
+Telegram-бот — в backlog.
 
 ## База данных
 
@@ -131,10 +145,13 @@ httpx  # тесты FastAPI
 
 ```yaml
 services:
-  db:      postgres:15
-  redis:   redis:7      # этап 3+
-  api:     prompt-dj-api (offline build, см. ниже)
+  db:        postgres:15
+  redis:     redis:7      # этап 3+
+  api:       prompt-dj-api (offline build, см. ниже)
+  frontend:  node:20-alpine → Next.js :3001  # после этапа 1.5
 ```
+
+Порты по умолчанию: API `8000`, frontend `3001` (как docwise, без конфликта с другими проектами).
 
 ## Offline / air-gapped deploy
 

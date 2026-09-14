@@ -38,24 +38,32 @@
 Учитывая 3.8 GiB RAM, для локальной разработки:
 
 ```yaml
-# docker-compose.yml (планируемый)
+# docker-compose.yml (текущий + планируемый frontend)
 services:
   api:
-    image: python:3.12-slim
-    # FastAPI + prompt_dj
+    image: prompt-dj-api
+    ports: ["8000:8000"]
 
   db:
     image: postgres:15
 
-  redis:
+  redis:                 # этап 3+
     image: redis:7
-    # Кэш track metadata, session store
+
+  frontend:              # этап 1.5, как docwise
+    build: ./frontend
+    ports: ["3001:3000"]
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
 ```
+
+Frontend: offline-сборка — `node_modules` с хоста (`make deps-frontend`), образ без `npm install` в сети. См. docwise `frontend/Dockerfile`.
 
 **Зафиксированный стек ([STACK.md](STACK.md)):**
 - LLM: **OpenAI API** (`gpt-4o-mini`) — не нагружает RAM
 - БД: **PostgreSQL 15** (образ есть)
-- UI: **FastAPI**
+- API: **FastAPI** `:8000`
+- UI: **Next.js** `:3001` (каркас из docwise, [FRONTEND.md](FRONTEND.md))
 - Эмбеддинги: `intfloat/multilingual-e5-base` (~1 GB)
 - Ollama не используется
 

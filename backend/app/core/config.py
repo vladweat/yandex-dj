@@ -1,6 +1,11 @@
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:3001,http://127.0.0.1:3001,"
+    "http://localhost:3000,http://127.0.0.1:3000"
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -22,7 +27,11 @@ class Settings(BaseSettings):
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    cors_origins: str = DEFAULT_CORS_ORIGINS
     session_ttl_hours: int = 720
+
+    def cors_origin_list(self) -> list[str]:
+        return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
 
     yandex_rate_limit_delay_sec: float = 0.15
     yandex_api_max_retries: int = 3

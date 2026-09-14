@@ -52,6 +52,27 @@
 
 > Для отладки на стенде с разрывом сети (хост с прокси → контейнер с PostgreSQL) используйте CLI: `prompt-dj auth start` / `poll` и `make auth-poll`. См. [DEVELOPMENT.md](DEVELOPMENT.md).
 
+### `GET /api/v1/auth/me`
+
+Профиль текущей сессии.
+
+**Headers:** `Authorization: Bearer <session_id>`
+
+**Ответ `200`:**
+```json
+{
+  "session_id": "uuid4",
+  "login": "username",
+  "yandex_uid": 411193386,
+  "expires_at": "2026-10-14T12:23:41.148639Z"
+}
+```
+
+**Ошибки:**
+- `401` — невалидная или истёкшая сессия
+
+Используется Next.js UI при boot (`auth-provider`) и после Device Flow. См. [FRONTEND.md](FRONTEND.md).
+
 ---
 
 ## Playlists

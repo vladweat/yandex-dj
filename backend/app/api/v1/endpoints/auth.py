@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import get_auth_service
+from app.api.deps import CurrentSession, get_auth_service
 from app.core.exceptions import AuthError, YandexMusicError
+from app.db.models.session import Session
 from app.schemas.auth import (
+    AuthMeResponse,
     DeviceFlowPollRequest,
     DeviceFlowPollResponse,
     DeviceFlowStartResponse,
@@ -42,3 +44,13 @@ async def device_flow_poll(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
         ) from exc
+
+
+@router.get("/me", response_model=AuthMeResponse)
+async def auth_me(session: Session = CurrentSession) -> AuthMeResponse:
+    return AuthMeResponse(
+        session_id=str(session.id),
+        login=session.user.login,
+        yandex_uid=session.user.yandex_uid,
+        expires_at=session.expires_at,
+    )

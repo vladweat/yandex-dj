@@ -1,0 +1,29 @@
+---
+description: Next.js 15 UI — Device Flow auth, playlist generation screen
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend (Next.js 15)
+
+Каркас из `../docwise` ([docs/REUSE_FROM_DOCWISE.md](../../docs/REUSE_FROM_DOCWISE.md)).
+
+- App Router, React 19, TypeScript 5 (strict), Tailwind 4, shadcn/ui (Radix).
+- `app/**/page.tsx` — RSC (metadata). Интерактив — `features/{auth,playlist,health}`.
+- Server data: TanStack Query. Ephemeral UI: Zustand. No Redux.
+- Только `/api/v1/*`. Типы = backend Pydantic ([docs/API.md](../../docs/API.md)).
+- Auth: **Bearer `session_id`** в `localStorage`, не cookie. Boot — `GET /auth/me`.
+- On logout/login: clear React Query + playlist Zustand store.
+
+## Auth (Device Flow)
+
+- `/login`: `POST /auth/device-flow/start` → показать `user_code` + `verification_url` → poll `POST /auth/device-flow/poll` до `authenticated`.
+- Сохранить `session_id`; дальше `Authorization: Bearer <session_id>`.
+- Не хранить OAuth-токен Яндекса в браузере.
+
+## Main screen
+
+- `/`: форма промпта → `POST /playlists/generate` → ссылка на плейлист + список треков.
+- `401` → `/login`. Ошибки — toast, не ломать layout.
+
+Prefer shadcn primitives over custom CSS. See [docs/FRONTEND.md](../../docs/FRONTEND.md).

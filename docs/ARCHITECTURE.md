@@ -118,12 +118,12 @@
 
 | Интерфейс | Стек | Приоритет |
 |-----------|------|-----------|
-| REST API | FastAPI + uvicorn | **Первый UI** |
-| CLI | click | Отладка |
-| Web | Next.js + Tailwind | Backlog |
+| Web | Next.js 15 + Tailwind 4 + shadcn | **Основной UI** (каркас из docwise) |
+| REST API | FastAPI + uvicorn | Контракт для UI и интеграций |
+| CLI | click | Отладка, разорванный Device Flow |
 | Telegram | aiogram 3.x | Backlog |
 
-API-контракты: [API.md](API.md).
+API-контракты: [API.md](API.md). UX и маршруты: [FRONTEND.md](FRONTEND.md).
 
 ## Обработка ошибок
 
@@ -148,6 +148,13 @@ backend/app/
 ├── services/           # бизнес-логика
 ├── repositories/       # доступ к БД
 └── db/models/          # SQLAlchemy
+
+frontend/src/           # Next.js (см. CONVENTIONS.md)
+├── app/                # RSC-маршруты
+├── features/           # auth, playlist
+├── components/         # shell + ui/
+├── lib/api.ts
+└── types/
 ```
 
 ## Конфигурация

@@ -1,4 +1,4 @@
-.PHONY: install clean venv build up down pack migrate test logs auth-poll
+.PHONY: install clean venv build up down pack migrate test logs auth-poll deps-frontend up-frontend typecheck test-frontend logs-frontend
 
 # Одна команда: venv + модель + libgomp + проверка
 install:
@@ -34,3 +34,18 @@ logs:
 
 auth-poll:
 	docker compose exec api python -m app.cli.main auth poll
+
+deps-frontend:
+	bash frontend/scripts/prepare-deps.sh
+
+up-frontend:
+	docker compose build frontend && docker compose up -d frontend
+
+typecheck:
+	cd frontend && npx tsc --noEmit
+
+test-frontend:
+	cd frontend && npm test
+
+logs-frontend:
+	docker compose logs -f frontend

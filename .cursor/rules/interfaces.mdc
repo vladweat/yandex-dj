@@ -6,7 +6,7 @@ alwaysApply: false
 
 # API
 
-Контракты: `docs/API.md`. Роутеры в `api/v1/endpoints/`, сборка в `api/v1/router.py`.
+Контракты: `docs/API.md`. Роутеры в `api/v1/endpoints/`, сборка в `api/v1/router.py`. Потребитель UI — `frontend/src/lib/api.ts` ([docs/FRONTEND.md](../../docs/FRONTEND.md)).
 
 - Endpoints → service через `api/deps.py`
 - Без бизнес-логики в endpoints
