@@ -75,6 +75,54 @@
 
 ---
 
+## LLM (Prompt Understanding)
+
+### `POST /api/v1/llm/parse`
+
+Разбор текстового промпта в `MusicProfile` (OpenAI SDK + instructor; провайдер — [KodikRouter](https://kodikrouter.ru/docs/base) или OpenAI).
+
+**Headers:** `Authorization: Bearer <session_id>`
+
+**Запрос:**
+```json
+{
+  "prompt": "спокойная музыка для кодинга поздней ночью, эмбиент без слов",
+  "track_count": 25,
+  "instrumental_only": false
+}
+```
+
+| Поле | Тип | Обязательно | По умолчанию |
+|------|-----|-------------|--------------|
+| `prompt` | string | да | — |
+| `track_count` | int | нет | из LLM (обычно 25) |
+| `instrumental_only` | bool | нет | false |
+
+**Ответ `200`:**
+```json
+{
+  "profile": {
+    "playlist_title": "Ночной фокус",
+    "playlist_description": "Спокойный эмбиент и лоу-фай для глубокой концентрации",
+    "primary_genres": ["ambient", "lo-fi"],
+    "mood_tags": ["calm", "focused"],
+    "vocal_type": "instrumental_only",
+    "reference_artists": ["Tycho", "Nujabes", "Bonobo", "Helios"],
+    "search_queries": ["lo-fi beats study", "ambient coding night", "instrumental chill focus"],
+    "target_track_count": 25
+  }
+}
+```
+
+**Ошибки:**
+- `401` — невалидная или истёкшая сессия
+- `422` — пустой или слишком длинный промпт
+- `503` — LLM недоступен или `OPENAI_API_KEY` не задан
+
+CLI: `prompt-dj llm parse "…"`. Конфиг: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` (см. `.env.example`).
+
+---
+
 ## Playlists
 
 ### `POST /api/v1/playlists/generate`

@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     token_encryption_key: str = ""
 
     openai_api_key: str = ""
+    openai_base_url: str = ""
+    openai_model: str = ""
     llm_model: str = "gpt-4o-mini"
     embedding_model: str = "intfloat/multilingual-e5-base"
     embedding_model_path: str = ""  # /opt/models в Docker (offline)

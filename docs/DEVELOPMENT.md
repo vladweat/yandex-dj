@@ -107,10 +107,10 @@ make migrate && make auth-poll
 **Цель:** промпт → `MusicProfile` через OpenAI + instructor.
 
 - [x] Pydantic-модель `MusicProfile` ([LLM_SCHEMA.md](LLM_SCHEMA.md))
-- [ ] Системный промпт + few-shot примеры
-- [ ] `LLMService`: `instructor` + `openai` SDK (`gpt-4o-mini`)
-- [ ] Внутренний сервис / endpoint для парсинга
-- [ ] 10–15 тестов с разноплановыми промптами (`pytest`)
+- [x] Системный промпт + few-shot примеры
+- [x] `LLMService`: `instructor` + `openai` SDK (KodikRouter / `gpt-4o-mini`)
+- [x] Внутренний сервис / endpoint для парсинга (`POST /api/v1/llm/parse`, CLI `llm parse`)
+- [x] 10–15 тестов с разноплановыми промптами (`pytest`)
 
 **Проверка:** тестовые промпты → валидный `MusicProfile`.
 

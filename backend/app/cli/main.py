@@ -23,13 +23,14 @@ from app.cli.auth_flow import (
     save_pending,
 )
 from app.core.config import settings
-from app.core.exceptions import SecurityError, YandexMusicError
+from app.core.exceptions import LLMError, SecurityError, YandexMusicError
 from app.core.proxy import get_outbound_proxy_url
 from app.db.session import AsyncSessionLocal
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import DeviceFlowPollResponse
 from app.services.auth_service import AuthService
+from app.services.llm_service import LLMService
 from app.services.yandex_music_service import YandexMusicService
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -290,6 +291,38 @@ async def _run_auth_test() -> None:
     result = await _save_session(access_token)
     click.echo("Авторизация успешна.")
     click.echo(f"session_id: {result.session_id}")
+
+
+@cli.group("llm")
+def llm() -> None:
+    """LLM Engine — парсинг промпта в MusicProfile."""
+
+
+@llm.command("parse")
+@click.argument("prompt")
+@click.option("--track-count", type=int, default=None, help="Переопределить target_track_count")
+@click.option("--instrumental-only", is_flag=True, help="Принудительно instrumental_only")
+def llm_parse(prompt: str, track_count: int | None, instrumental_only: bool) -> None:
+    """Разложить текстовый промпт в MusicProfile (нужен OPENAI_API_KEY)."""
+    asyncio.run(_llm_parse(prompt, track_count, instrumental_only))
+
+
+async def _llm_parse(
+    prompt: str,
+    track_count: int | None,
+    instrumental_only: bool,
+) -> None:
+    service = LLMService()
+    try:
+        profile = await service.parse_prompt(
+            prompt,
+            track_count=track_count,
+            instrumental_only=instrumental_only,
+        )
+    except LLMError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    click.echo(profile.model_dump_json(indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
