@@ -72,3 +72,50 @@ services:
 ## Переменные для Docker-окружения
 
 См. `.env.example` — секции `DATABASE_URL`, `REDIS_URL`, `TOKEN_ENCRYPTION_KEY`.
+
+## Offline-сборка Docker (без интернета)
+
+Ограничение: на целевой машине при `docker build` сети нет. Пакеты копируются из `site-packages` локального venv.
+
+### Online (подготовка артефактов)
+
+```bash
+# Базовые образы — сохранить для offline
+docker pull python:3.12-slim postgres:15
+docker save python:3.12-slim postgres:15 -o dist/base-images.tar
+
+# Python 3.12 на хосте обязателен
+make venv    # backend/.venv + .models + .libs
+
+make pack    # dist/prompt-dj-offline-*.tar.gz
+```
+
+`make venv` выполняет:
+1. `pip install ".[ml]"` в `backend/.venv`
+2. копирует `libgomp.so.1` в `backend/.libs`
+3. скачивает embedding-модель в `backend/.models`
+
+### Offline (сборка и запуск)
+
+```bash
+docker load -i dist/base-images.tar
+tar -xzf dist/prompt-dj-offline-YYYYMMDD.tar.gz -C /path/to/project
+
+cd /path/to/project
+cp backend/.env.example backend/.env   # заполнить секреты
+make build
+make up
+```
+
+### Файлы
+
+| Файл | Назначение |
+|------|------------|
+| `Makefile` | `venv`, `build`, `up`, `pack` |
+| `scripts/build-venv.sh` | venv + модель + libgomp |
+| `backend/scripts/prepare_embeddings.py` | скачивание модели в `.models` |
+| `scripts/pack-offline-bundle.sh` | tar.gz для переноса |
+| `backend/Dockerfile` | COPY site-packages, без `pip install` |
+| `backend/.dockerignore` | оставляет `.venv/lib`, исключает `.venv/bin` |
+
+В Docker: `EMBEDDING_MODEL_PATH=/opt/models`, `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`.

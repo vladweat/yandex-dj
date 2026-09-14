@@ -1,0 +1,61 @@
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: prompt-dj-api
+    command:
+      [
+        "python",
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+        "--reload-dir",
+        "/app/app",
+      ]
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://prompt_dj:prompt_dj@db:5432/prompt_dj
+      EMBEDDING_MODEL_PATH: /opt/models
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
+      https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
+      NO_PROXY: localhost,127.0.0.1,db,postgres,redis
+      no_proxy: localhost,127.0.0.1,db,postgres,redis
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/alembic.ini:/app/alembic.ini
+      - ./backend/.auth:/app/.auth
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:15
+    container_name: prompt-dj-db
+    environment:
+      POSTGRES_USER: prompt_dj
+      POSTGRES_PASSWORD: prompt_dj
+      POSTGRES_DB: prompt_dj
+    ports:
+      - "5432:5432"
+    volumes:
+      - prompt_dj_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prompt_dj -d prompt_dj"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  prompt_dj_pgdata:

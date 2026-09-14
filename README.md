@@ -8,46 +8,52 @@
 
 | Подсистема | Технологии |
 |------------|------------|
-| Язык | Python 3.12 |
-| API Яндекс Музыки | `yandex-music` v3+ |
-| LLM | OpenAI (`openai` SDK, `gpt-4o-mini`) + `instructor` |
+| Бэкенд | **FastAPI** + uvicorn (`backend/`) |
+| LLM | OpenAI + `instructor` |
 | Embeddings | `sentence-transformers`, `numpy` |
-| Бэкенд / UI | **FastAPI** + uvicorn |
-| БД | **PostgreSQL 15** + SQLAlchemy |
-| CLI | `click` |
-| Dev | `ruff`, `pytest` |
+| БД | PostgreSQL 15 + SQLAlchemy |
+| Dev | `ruff`, `pytest`, `click` |
 
 Полный список: [docs/STACK.md](docs/STACK.md)
 
 ## Быстрый старт
 
 ```bash
-cd yandex-dj
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-
-cp .env.example .env
+# PostgreSQL
 docker compose up -d db
 
-uvicorn prompt_dj.api.main:app --reload
-# Swagger: http://localhost:8000/docs
+# Backend
+make install          # production venv + модель (для Docker)
+# dev без Docker:
+cd backend && python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env
+uvicorn app.main:app --reload
 ```
 
-## Структура проекта
+Подробнее: [backend/README.md](backend/README.md)
+
+## Структура репозитория
 
 ```
 yandex-dj/
-├── src/prompt_dj/
-│   ├── api/            # FastAPI (/api/v1/...)
-│   ├── auth/           # Device Flow, Fernet, сессии
-│   ├── db/             # PostgreSQL / SQLAlchemy
-│   ├── llm/            # MusicProfile, instructor + OpenAI
-│   ├── candidates/     # async retrieval
-│   ├── scoring/        # sentence-transformers
-│   ├── export/         # playlist builder
-│   └── pipeline.py
+├── backend/
+│   ├── app/
+│   │   ├── api/        # endpoints, deps
+│   │   ├── core/       # config, security
+│   │   ├── services/   # бизнес-логика
+│   │   ├── schemas/
+│   │   ├── repositories/
+│   │   └── db/
+│   ├── tests/
+│   ├── Dockerfile          # offline: COPY site-packages
+│   └── pyproject.toml
+├── scripts/
+│   ├── build-venv.sh
+│   └── pack-offline-bundle.sh
+├── Makefile
 ├── docs/
-└── tests/
+└── docker-compose.yml
 ```
 
 ## Документация
@@ -57,7 +63,6 @@ yandex-dj/
 | [STACK.md](docs/STACK.md) | Зафиксированный стек |
 | [SPEC.md](docs/SPEC.md) | Техническое задание |
 | [API.md](docs/API.md) | REST API контракты |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура |
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Roadmap |
 
 ## Лицензия

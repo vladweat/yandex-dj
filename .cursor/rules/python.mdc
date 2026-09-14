@@ -1,15 +1,27 @@
 ---
-description: Python-конвенции Prompt DJ
-globs: "**/*.py"
+description: Python и слои FastAPI
+globs: "backend/app/**/*.py"
 alwaysApply: false
 ---
 
-# Python
+# Python / FastAPI (async)
 
-- Type hints, Pydantic v2, `pydantic-settings`
-- **ruff** для lint и format
-- Async IO (FastAPI, retrieval); sync для embeddings
-- Исключения по слоям: `LLMError`, `RetrievalError`, `ScoringError`, `ExportError`
-- Токены: Fernet (`cryptography`) → PostgreSQL
-- Lazy import для `sentence-transformers`
-- Тесты: **pytest** + `httpx` для FastAPI
+## Async-стек
+
+- Endpoints: `async def`
+- Services / repositories: `async def`
+- БД: SQLAlchemy 2.0 + `AsyncSession` + **asyncpg**
+- Depends: `get_db_session` → `AsyncGenerator[AsyncSession]`
+- Alembic: sync URL (`settings.database_url_sync`, psycopg2)
+
+## Слои
+
+- `endpoints/` → `services/` → `repositories/` → `db/models/`
+- `schemas/` — Pydantic in/out
+- `core/` — config, security, exceptions
+
+## Правила
+
+- Type hints, Pydantic v2, `core.config.settings`
+- IO-bound (API Яндекса, OpenAI, Redis) — async; embeddings (CPU) — sync в `run_in_executor`
+- **ruff**, **pytest-asyncio**

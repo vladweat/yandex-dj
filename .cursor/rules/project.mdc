@@ -5,24 +5,27 @@ alwaysApply: true
 
 # Prompt DJ — контекст проекта
 
-Сервис генерации плейлистов: промпт → `MusicProfile` → retrieval (150–300) → scoring → export.
+Сервис генерации плейлистов: промпт → MusicProfile → retrieval → scoring → export.
 
 Документы: `docs/SPEC.md`, `docs/STACK.md`. Latency: **7–12 сек**.
 
-## Стек (зафиксирован)
+## Слои FastAPI (`backend/app/`)
 
-- **LLM:** OpenAI API (`openai` + `instructor`, `gpt-4o-mini`)
-- **Embeddings:** `sentence-transformers` + `numpy` (сразу)
-- **UI:** FastAPI + uvicorn (первый)
-- **БД:** PostgreSQL 15 + SQLAlchemy
-- **CLI:** click | **Dev:** ruff, pytest
+| Слой | Папка |
+|------|-------|
+| HTTP | `api/v1/endpoints/` |
+| DI | `api/deps.py` |
+| Бизнес-логика | `services/` |
+| БД | `repositories/` + `db/models/` |
+| Контракты | `schemas/` |
+| Инфра | `core/` (config, security, exceptions) |
 
-## Модули
+## Стек
 
-`api/` `auth/` `db/` `llm/` `candidates/` `scoring/` `export/` `pipeline.py`
+Async FastAPI, SQLAlchemy AsyncSession + asyncpg, OpenAI + instructor, PostgreSQL 15, click, ruff.
 
 ## Принципы
 
-- `MusicProfile` — контракт LLM → пайплайн
-- Токены в PostgreSQL, зашифрованы Fernet
-- Diversity: ≤25 → max 2/артист; 26–50 → max 3
+- Endpoints тонкие → только вызов service
+- Services не знают про HTTP
+- `MusicProfile` в `schemas/llm.py`

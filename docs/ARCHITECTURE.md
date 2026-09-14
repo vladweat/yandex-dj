@@ -139,16 +139,15 @@ API-контракты: [API.md](API.md).
 ## Структура кода
 
 ```
-src/prompt_dj/
-├── auth/           # Device Flow, шифрование, сессии
-├── api/            # FastAPI routes
-├── llm/            # MusicProfile, instructor
-├── candidates/     # async retrieval
-├── scoring/        # embeddings, diversity
-├── export/         # playlist builder
-├── db/             # PostgreSQL / SQLAlchemy
-├── cache/          # Redis wrapper
-└── pipeline.py
+backend/app/
+├── main.py
+├── api/v1/endpoints/   # HTTP-слой
+├── api/deps.py         # Async Depends (AsyncSession)
+├── core/               # config, security, exceptions
+├── schemas/            # Pydantic (API + MusicProfile)
+├── services/           # бизнес-логика
+├── repositories/       # доступ к БД
+└── db/models/          # SQLAlchemy
 ```
 
 ## Конфигурация
@@ -156,7 +155,7 @@ src/prompt_dj/
 См. `.env.example`. Ключевые переменные:
 
 ```env
-DATABASE_URL=postgresql://prompt_dj:prompt_dj@localhost:5432/prompt_dj
+DATABASE_URL=postgresql+asyncpg://prompt_dj:prompt_dj@localhost/prompt_dj
 OPENAI_API_KEY=
 LLM_MODEL=gpt-4o-mini
 EMBEDDING_MODEL=intfloat/multilingual-e5-base

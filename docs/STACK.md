@@ -17,7 +17,7 @@
 
 | Компонент | Выбор |
 |-----------|-------|
-| Клиент API | **yandex-music** v3+ |
+| Клиент API | **yandex-music[async]** v3+ (`ClientAsync`, `aiohttp`) |
 | Авторизация | OAuth Device Flow |
 | Хранение токена | PostgreSQL (зашифрован Fernet) |
 
@@ -93,7 +93,7 @@ SQLite не используется.
 
 ```
 # core
-yandex-music
+yandex-music[async]
 pydantic
 pydantic-settings
 python-dotenv
@@ -112,9 +112,10 @@ torch  # transitive dep of sentence-transformers
 fastapi
 uvicorn[standard]
 
-# db
-sqlalchemy
-psycopg2-binary  # или asyncpg при async SQLAlchemy
+# db (async runtime + sync migrations)
+sqlalchemy[asyncio]
+asyncpg
+psycopg2-binary  # только Alembic
 alembic
 
 # cli
@@ -132,5 +133,27 @@ httpx  # тесты FastAPI
 services:
   db:      postgres:15
   redis:   redis:7      # этап 3+
-  api:     python:3.12-slim
+  api:     prompt-dj-api (offline build, см. ниже)
 ```
+
+## Offline / air-gapped deploy
+
+Сборка образа **без интернета**: venv, модель и `.libs` готовятся на хосте с Python 3.12.
+
+| Этап | Где | Команда |
+|------|-----|---------|
+| 1. Venv + модель | online | `make venv` |
+| 2. Перенос | USB / registry | `make pack` или `docker save` |
+| 3. Образ | **offline** | `make build` |
+| 4. Запуск | offline | `make up` |
+
+**Правила:**
+
+- хост: **Python 3.12** (та же версия, что `python:3.12-slim`)
+- в образ копируется `.venv/lib/python3.12/site-packages/` → `/usr/local/lib/python3.12/site-packages/`
+- модель: `backend/.models` → `/opt/models`; `HF_HUB_OFFLINE=1`
+- `libgomp.so.1` → `backend/.libs` (для torch в slim)
+- `pip install -e` **не используется** — только `pip install ".[ml]"`
+- исходник зависимостей: `pyproject.toml`
+
+Подробнее: [INFRASTRUCTURE.md](INFRASTRUCTURE.md)

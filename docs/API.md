@@ -48,6 +48,9 @@
 **Ошибки:**
 - `408` — таймаут (120 сек)
 - `400` — невалидный или истёкший `device_code`
+- `502` — Яндекс API недоступен
+
+> Для отладки на стенде с разрывом сети (хост с прокси → контейнер с PostgreSQL) используйте CLI: `prompt-dj auth start` / `poll` и `make auth-poll`. См. [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ---
 

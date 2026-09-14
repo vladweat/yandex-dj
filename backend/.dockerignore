@@ -1,0 +1,16 @@
+.git
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+.venv/bin
+.venv/include
+.venv/pyvenv.cfg
+.venv/share
+.env
+.env.*
+!.env.example
+tests
+README.md
+.cache
+.venv-docker
+dist

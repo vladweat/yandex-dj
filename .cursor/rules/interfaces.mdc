@@ -1,27 +1,16 @@
 ---
-description: FastAPI и click CLI
-globs: "**/{api,cli}/**/*"
+description: API endpoints и CLI
+globs: "backend/app/{api,cli}/**/*"
 alwaysApply: false
 ---
 
-# Интерфейсы
+# API
 
-## FastAPI (первый UI)
+Контракты: `docs/API.md`. Роутеры в `api/v1/endpoints/`, сборка в `api/v1/router.py`.
 
-Контракты: `docs/API.md`. Swagger: `/docs`.
+- Endpoints → service через `api/deps.py`
+- Без бизнес-логики в endpoints
 
-- `POST /api/v1/auth/device-flow/start`
-- `POST /api/v1/auth/device-flow/poll`
-- `POST /api/v1/playlists/generate`
-- `GET /api/v1/health`
+## CLI
 
-Бизнес-логика — только в `pipeline.py`, routes — тонкие.
-
-## click (отладка)
-
-```bash
-prompt-dj db init
-prompt-dj auth test
-```
-
-Не дублировать логику пайплайна в CLI.
+`app/cli/main.py` — click, только отладка.
