@@ -13,6 +13,7 @@ from app.services.health_service import HealthService
 from app.services.llm_service import LLMService
 from app.services.playlist_service import PlaylistService
 from app.services.retrieval_service import RetrievalService
+from app.services.scoring_service import ScoringService
 from app.services.track_cache import TrackCacheService
 from app.services.yandex_account_service import YandexAccountService
 from app.services.yandex_music_service import YandexMusicService
@@ -54,6 +55,10 @@ def get_retrieval_service(
     cache: TrackCacheService = Depends(get_track_cache),
 ) -> RetrievalService:
     return RetrievalService(yandex=yandex, cache=cache)
+
+
+def get_scoring_service() -> ScoringService:
+    return ScoringService()
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:

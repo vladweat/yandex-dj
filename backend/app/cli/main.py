@@ -1,4 +1,5 @@
 import asyncio
+import json
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -33,6 +34,7 @@ from app.schemas.llm import MusicProfile
 from app.services.auth_service import AuthService
 from app.services.llm_service import LLMService
 from app.services.retrieval_service import RetrievalService
+from app.services.scoring_service import ScoringService
 from app.services.track_cache import TrackCacheService
 from app.services.yandex_music_service import YandexMusicService
 
@@ -393,6 +395,110 @@ async def _retrieval_fetch(
     for track in tracks[:5]:
         artists = ", ".join(track.artists)
         click.echo(f"  - {artists} — {track.title} ({track.id})")
+
+
+@cli.group("scoring")
+def scoring() -> None:
+    """Scoring Module — ранжирование кандидатов по embeddings."""
+
+
+@scoring.command("rank")
+@click.option("--prompt", default=None, help="Промпт → LLM → retrieval → scoring")
+@click.option(
+    "--profile-json",
+    type=click.Path(exists=True),
+    default=None,
+    help="MusicProfile JSON",
+)
+@click.option(
+    "--candidates-json",
+    type=click.Path(exists=True),
+    default=None,
+    help="JSON-массив TrackCandidate (без retrieval)",
+)
+@click.option("--token", envvar="YANDEX_OAUTH_TOKEN", default=None, help="OAuth-токен Яндекса")
+@click.option(
+    "--reference-track-id",
+    default=None,
+    help="ID трека-референса для tracks_similar",
+)
+def scoring_rank(
+    prompt: str | None,
+    profile_json: str | None,
+    candidates_json: str | None,
+    token: str | None,
+    reference_track_id: str | None,
+) -> None:
+    """Отранжировать кандидатов (нужен OAuth при retrieval из промпта)."""
+    if profile_json is None and prompt is None:
+        raise click.UsageError("Укажите --prompt или --profile-json")
+    if candidates_json is None and token is None and prompt is None:
+        raise click.UsageError("Укажите --candidates-json или --token/--prompt для retrieval")
+    asyncio.run(
+        _scoring_rank(prompt, profile_json, candidates_json, token, reference_track_id)
+    )
+
+
+async def _scoring_rank(
+    prompt: str | None,
+    profile_json: str | None,
+    candidates_json: str | None,
+    token: str | None,
+    reference_track_id: str | None,
+) -> None:
+    from app.core.embedding import warmup_embedding_model
+    from app.schemas.track import TrackCandidate
+
+    user_prompt = prompt
+    if profile_json is not None:
+        profile = MusicProfile.model_validate_json(Path(profile_json).read_text(encoding="utf-8"))
+    else:
+        llm = LLMService()
+        llm_started = time.perf_counter()
+        try:
+            profile = await llm.parse_prompt(prompt or "")
+        except LLMError as exc:
+            raise click.ClickException(str(exc)) from exc
+        click.echo(f"llm_ms: {int((time.perf_counter() - llm_started) * 1000)}")
+
+    if candidates_json is not None:
+        candidates = [
+            TrackCandidate.model_validate(item)
+            for item in json.loads(Path(candidates_json).read_text(encoding="utf-8"))
+        ]
+    else:
+        if token is None:
+            raise click.UsageError("Укажите --token или YANDEX_OAUTH_TOKEN")
+        retrieval = RetrievalService(YandexMusicService(), TrackCacheService())
+        retrieval_started = time.perf_counter()
+        try:
+            candidates = await retrieval.collect_candidates(
+                profile,
+                token,
+                reference_track_id=reference_track_id,
+            )
+        except YandexMusicError as exc:
+            raise _yandex_error(exc) from exc
+        click.echo(f"retrieval_ms: {int((time.perf_counter() - retrieval_started) * 1000)}")
+
+    embed_pool = min(len(candidates), settings.scoring_embed_limit)
+    click.echo(f"candidates: {len(candidates)}")
+    click.echo(f"embed_pool: {embed_pool}")
+
+    warmup_started = time.perf_counter()
+    warmup_embedding_model()
+    click.echo(f"model_warmup_ms: {int((time.perf_counter() - warmup_started) * 1000)}")
+
+    scoring_service = ScoringService()
+    scoring_started = time.perf_counter()
+    tracks, method = await scoring_service.rank(profile, candidates, user_prompt=user_prompt)
+    scoring_ms = int((time.perf_counter() - scoring_started) * 1000)
+    click.echo(f"method: {method}")
+    click.echo(f"ranked: {len(tracks)}")
+    click.echo(f"scoring_ms: {scoring_ms}")
+    for track in tracks[:10]:
+        artists = ", ".join(track.artists)
+        click.echo(f"  - {track.score:.3f} {artists} — {track.title} ({track.id})")
 
 
 if __name__ == "__main__":

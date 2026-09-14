@@ -7,14 +7,19 @@ from app.core.proxy import apply_internal_no_proxy
 
 apply_internal_no_proxy()
 
+import asyncio
+
 from app import __version__
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.embedding import warmup_embedding_model
 from app.db.session import engine
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, warmup_embedding_model)
     yield
     await engine.dispose()
 
