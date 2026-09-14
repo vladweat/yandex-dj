@@ -1,10 +1,10 @@
 """Обёртка над yandex-music API: Device Flow, retry, rate limiting."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TypeVar
 
-from yandex_music import ClientAsync, DeviceCode, OAuthToken, Status
+from yandex_music import ClientAsync, DeviceCode, OAuthToken, Status, Track
 from yandex_music.exceptions import DeviceAuthError, NetworkError, TimedOutError
 from yandex_music.utils.request_async import Request
 
@@ -102,3 +102,106 @@ class YandexMusicService:
         client = await self.init_client(access_token)
         status = await self.get_account_status(client)
         return status.to_dict()
+
+    async def _throttle(self) -> None:
+        await asyncio.sleep(settings.yandex_rate_limit_delay_sec)
+
+    async def search_tracks(
+        self,
+        client: ClientAsync,
+        query: str,
+        *,
+        limit: int | None = None,
+        pages: int | None = None,
+    ) -> list[Track]:
+        per_query = limit or settings.search_tracks_per_query
+        page_count = pages if pages is not None else settings.search_pages
+
+        async def _search() -> list[Track]:
+            tracks: list[Track] = []
+            seen_ids: set[str] = set()
+
+            for page in range(page_count):
+                await self._throttle()
+                result = await client.search(query, type_="track", page=page)
+                if result is None or result.tracks is None or not result.tracks.results:
+                    break
+
+                for track in result.tracks.results:
+                    if track.id is None:
+                        continue
+                    track_id = str(track.id)
+                    if track_id in seen_ids:
+                        continue
+                    seen_ids.add(track_id)
+                    tracks.append(track)
+                    if len(tracks) >= per_query:
+                        return tracks
+
+                per_page = result.tracks.per_page or len(result.tracks.results)
+                if len(result.tracks.results) < per_page:
+                    break
+
+            return tracks
+
+        return await self._call_with_retry(_search)
+
+    async def search_artist_id(self, client: ClientAsync, name: str) -> str | None:
+        async def _search() -> str | None:
+            await self._throttle()
+            result = await client.search(name, type_="artist")
+            if result is None or result.artists is None or not result.artists.results:
+                return None
+            artist = result.artists.results[0]
+            if artist.id is None:
+                return None
+            return str(artist.id)
+
+        return await self._call_with_retry(_search)
+
+    async def artists_top_tracks(
+        self,
+        client: ClientAsync,
+        artist_id: str | int,
+        *,
+        limit: int | None = None,
+    ) -> list[Track]:
+        page_size = limit or settings.artist_tracks_limit
+
+        async def _fetch() -> list[Track]:
+            await self._throttle()
+            result = await client.artists_tracks(artist_id, page=0, page_size=page_size)
+            if result is None or not result.tracks:
+                return []
+            return list(result.tracks[:page_size])
+
+        return await self._call_with_retry(_fetch)
+
+    async def tracks_similar_list(
+        self,
+        client: ClientAsync,
+        track_id: str | int,
+    ) -> list[Track]:
+        async def _fetch() -> list[Track]:
+            await self._throttle()
+            result = await client.tracks_similar(track_id)
+            if result is None or not result.similar_tracks:
+                return []
+            return list(result.similar_tracks)
+
+        return await self._call_with_retry(_fetch)
+
+    async def fetch_tracks(
+        self,
+        client: ClientAsync,
+        track_ids: Sequence[str | int],
+    ) -> list[Track]:
+        if not track_ids:
+            return []
+
+        async def _fetch() -> list[Track]:
+            await self._throttle()
+            tracks = await client.tracks(list(track_ids))
+            return [track for track in tracks if track is not None]
+
+        return await self._call_with_retry(_fetch)

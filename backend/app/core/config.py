@@ -2,8 +2,7 @@ from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_CORS_ORIGINS = (
-    "http://localhost:3001,http://127.0.0.1:3001,"
-    "http://localhost:3000,http://127.0.0.1:3000"
+    "http://localhost:3001,http://127.0.0.1:3001,http://localhost:3000,http://127.0.0.1:3000"
 )
 
 
@@ -23,9 +22,17 @@ class Settings(BaseSettings):
     embedding_model_path: str = ""  # /opt/models в Docker (offline)
 
     max_candidates: int = 300
+    min_candidates_pool: int = 100
+    target_candidates_pool: int = 150
     playlist_size: int = 25
     max_tracks_per_artist: int = 2
     pipeline_timeout_sec: int = 12
+    track_cache_ttl_sec: int = 86400
+    artist_tracks_limit: int = 10
+    search_tracks_per_query: int = 50
+    search_pages: int = 2
+    search_expand_max_queries: int = 12
+    retrieval_expand_passes: int = 2
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000

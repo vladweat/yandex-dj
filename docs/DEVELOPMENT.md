@@ -12,7 +12,7 @@
 | FastAPI | ✅ `/api/v1/health` → `200 ok` |
 | Auth / Playlists | ✅ Auth реализован; Playlists — `501` |
 | Frontend | ⏳ каркас из docwise — [FRONTEND.md](FRONTEND.md); временно `GET /test/auth` |
-| Пайплайн (LLM → export) | ❌ сервисы — заглушки |
+| Пайплайн (LLM → export) | ⏳ retrieval готов; scoring/export — заглушки |
 
 **Следующий шаг:** скелет `frontend/` (docwise); параллельно — Этап 2 (LLM Engine).
 
@@ -120,11 +120,11 @@ make migrate && make auth-poll
 
 **Цель:** `MusicProfile` → пул 150–300 кандидатов.
 
-- [ ] `RetrievalService`: `search` + `artists_tracks` (топ-10) + `tracks_similar`
-- [ ] Async через `asyncio`
-- [ ] Дедупликация: `track.id` + «Артист + Название»
-- [ ] Фильтр `available == False`
-- [ ] Redis: кэш метаданных треков (`docker compose` + `redis:7`)
+- [x] `RetrievalService`: `search` + `artists_tracks` (топ-10) + `tracks_similar`
+- [x] Async через `asyncio`
+- [x] Дедупликация: `track.id` + «Артист + Название»
+- [x] Фильтр `available == False`
+- [x] Redis: кэш метаданных треков (`docker compose` + `redis:7`)
 
 **Проверка:** пул 150+ треков за < 4 сек.
 

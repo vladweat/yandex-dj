@@ -24,6 +24,7 @@ dependencies = [
     "openai>=1.0",
     "instructor>=1.0",
     "numpy>=1.26",
+    "redis>=5.0",
 ]
 
 [project.optional-dependencies]

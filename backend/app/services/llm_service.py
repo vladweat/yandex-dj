@@ -12,6 +12,7 @@ from app.core.exceptions import LLMError
 from app.core.llm_config import openai_is_configured, resolve_openai_base_url, resolve_openai_model
 from app.schemas.llm import MusicProfile
 from app.services.llm_prompts import build_messages
+from app.utils.search_queries import refine_search_queries
 
 LLM_MAX_RETRIES = 2
 LLM_TIMEOUT_SEC = 60.0
@@ -20,7 +21,7 @@ LLM_TIMEOUT_SEC = 60.0
 def enrich_search_queries(profile: MusicProfile) -> MusicProfile:
     """Дополнить search_queries из жанров и mood, если LLM вернул меньше 3."""
     if len(profile.search_queries) >= 3:
-        return profile
+        return refine_search_queries(profile)
 
     queries = list(profile.search_queries)
     seen = {item.lower() for item in queries}
@@ -45,7 +46,8 @@ def enrich_search_queries(profile: MusicProfile) -> MusicProfile:
     if len(queries) == len(profile.search_queries):
         return profile
 
-    return profile.model_copy(update={"search_queries": queries[:5]})
+    profile = profile.model_copy(update={"search_queries": queries[:5]})
+    return refine_search_queries(profile)
 
 
 def apply_request_hints(
