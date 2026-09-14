@@ -27,3 +27,11 @@ class TrackCandidate(BaseModel):
             f"Жанр: {self.genre}. "
             f"Версия: {self.version}"
         )
+
+    def embedding_passport(self) -> str:
+        """Короткий текст для embedding — меньше токенов, быстрее batch-encode."""
+        artists = ", ".join(self.artists)
+        parts = [self.title, artists]
+        if self.genre:
+            parts.append(self.genre)
+        return ". ".join(parts)

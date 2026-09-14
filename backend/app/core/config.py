@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     search_pages: int = 2
     search_expand_max_queries: int = 12
     retrieval_expand_passes: int = 2
+    scoring_embed_limit: int = 80
+    embedding_batch_size: int = 64
+    embedding_torch_threads: int = 0  # 0 = все доступные CPU-потоки
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000

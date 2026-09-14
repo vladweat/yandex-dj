@@ -12,7 +12,7 @@
 | FastAPI | ✅ `/api/v1/health` → `200 ok` |
 | Auth / Playlists | ✅ Auth реализован; Playlists — `501` |
 | Frontend | ⏳ каркас из docwise — [FRONTEND.md](FRONTEND.md); временно `GET /test/auth` |
-| Пайплайн (LLM → export) | ⏳ retrieval готов; scoring/export — заглушки |
+| Пайплайн (LLM → export) | ⏳ retrieval + scoring готовы; export — заглушка |
 
 **Следующий шаг:** скелет `frontend/` (docwise); параллельно — Этап 2 (LLM Engine).
 
@@ -135,11 +135,11 @@ make migrate && make auth-poll
 **Цель:** кандидаты → отранжированный топ-N (embeddings с первого релиза).
 
 - [x] Модель `intfloat/multilingual-e5-base` подготовлена для offline (`make venv`)
-- [ ] `ScoringService`: `sentence-transformers` + batch-эмбеддинг
-- [ ] Паспорта треков (формат из [SPEC.md](SPEC.md) §4.4)
-- [ ] Cosine similarity (`numpy`)
-- [ ] Diversity: 2 трека/артист (N≤25), 3 (N 26–50)
-- [ ] Fallback: жанры + популярность
+- [x] `ScoringService`: `sentence-transformers` + batch-эмбеддинг
+- [x] Паспорта треков (формат из [SPEC.md](SPEC.md) §4.4)
+- [x] Cosine similarity (`numpy`)
+- [x] Diversity: 2 трека/артист (N≤25), 3 (N 26–50)
+- [x] Fallback: жанры + популярность
 
 **Проверка:** 25 релевантных треков; скоринг < 2 сек.
 
