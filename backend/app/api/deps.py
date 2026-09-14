@@ -12,8 +12,12 @@ from app.services.auth_service import AuthService
 from app.services.health_service import HealthService
 from app.services.llm_service import LLMService
 from app.services.playlist_service import PlaylistService
+from app.services.retrieval_service import RetrievalService
+from app.services.track_cache import TrackCacheService
 from app.services.yandex_account_service import YandexAccountService
 from app.services.yandex_music_service import YandexMusicService
+
+_track_cache: TrackCacheService | None = None
 
 
 def get_health_service() -> HealthService:
@@ -36,6 +40,20 @@ def get_playlist_service() -> PlaylistService:
 
 def get_llm_service() -> LLMService:
     return LLMService()
+
+
+def get_track_cache() -> TrackCacheService:
+    global _track_cache
+    if _track_cache is None:
+        _track_cache = TrackCacheService()
+    return _track_cache
+
+
+def get_retrieval_service(
+    yandex: YandexMusicService = Depends(get_yandex_music_service),
+    cache: TrackCacheService = Depends(get_track_cache),
+) -> RetrievalService:
+    return RetrievalService(yandex=yandex, cache=cache)
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:

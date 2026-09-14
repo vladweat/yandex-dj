@@ -6,6 +6,11 @@ from app.schemas.yandex import YandexAccountSummary, YandexStatusResponse
 from app.services.yandex_music_service import YandexMusicService
 
 
+def _dict_field(raw: dict[str, Any], key: str) -> dict[str, Any] | None:
+    value = raw.get(key)
+    return value if isinstance(value, dict) else None
+
+
 class YandexAccountService:
     def __init__(self, yandex: YandexMusicService) -> None:
         self._yandex = yandex
@@ -18,8 +23,8 @@ class YandexAccountService:
         return YandexStatusResponse(
             account=account,
             default_email=raw.get("default_email"),
-            subscription=raw.get("subscription") if isinstance(raw.get("subscription"), dict) else None,
-            plus=raw.get("plus") if isinstance(raw.get("plus"), dict) else None,
-            permissions=raw.get("permissions") if isinstance(raw.get("permissions"), dict) else None,
+            subscription=_dict_field(raw, "subscription"),
+            plus=_dict_field(raw, "plus"),
+            permissions=_dict_field(raw, "permissions"),
             status=raw,
         )

@@ -29,8 +29,11 @@ from app.db.session import AsyncSessionLocal
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import DeviceFlowPollResponse
+from app.schemas.llm import MusicProfile
 from app.services.auth_service import AuthService
 from app.services.llm_service import LLMService
+from app.services.retrieval_service import RetrievalService
+from app.services.track_cache import TrackCacheService
 from app.services.yandex_music_service import YandexMusicService
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -323,6 +326,73 @@ async def _llm_parse(
         raise click.ClickException(str(exc)) from exc
 
     click.echo(profile.model_dump_json(indent=2, ensure_ascii=False))
+
+
+@cli.group("retrieval")
+def retrieval() -> None:
+    """Retrieval Engine — сбор кандидатов из каталога Яндекс Музыки."""
+
+
+@retrieval.command("fetch")
+@click.option("--prompt", default=None, help="Промпт → LLM → retrieval (нужен OPENAI_API_KEY)")
+@click.option(
+    "--profile-json",
+    type=click.Path(exists=True),
+    default=None,
+    help="MusicProfile JSON",
+)
+@click.option("--token", envvar="YANDEX_OAUTH_TOKEN", default=None, help="OAuth-токен Яндекса")
+@click.option(
+    "--reference-track-id",
+    default=None,
+    help="ID трека-референса для tracks_similar",
+)
+def retrieval_fetch(
+    prompt: str | None,
+    profile_json: str | None,
+    token: str | None,
+    reference_track_id: str | None,
+) -> None:
+    """Собрать пул кандидатов (нужен OAuth-токен и OPENAI_API_KEY при --prompt)."""
+    if profile_json is None and prompt is None:
+        raise click.UsageError("Укажите --prompt или --profile-json")
+    if token is None:
+        raise click.UsageError("Укажите --token или YANDEX_OAUTH_TOKEN")
+    asyncio.run(_retrieval_fetch(prompt, profile_json, token, reference_track_id))
+
+
+async def _retrieval_fetch(
+    prompt: str | None,
+    profile_json: str | None,
+    token: str,
+    reference_track_id: str | None,
+) -> None:
+    if profile_json is not None:
+        profile = MusicProfile.model_validate_json(Path(profile_json).read_text(encoding="utf-8"))
+    else:
+        llm = LLMService()
+        try:
+            profile = await llm.parse_prompt(prompt or "")
+        except LLMError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+    service = RetrievalService(YandexMusicService(), TrackCacheService())
+    started = time.perf_counter()
+    try:
+        tracks = await service.collect_candidates(
+            profile,
+            token,
+            reference_track_id=reference_track_id,
+        )
+    except YandexMusicError as exc:
+        raise _yandex_error(exc) from exc
+
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    click.echo(f"candidates: {len(tracks)}")
+    click.echo(f"elapsed_ms: {elapsed_ms}")
+    for track in tracks[:5]:
+        artists = ", ".join(track.artists)
+        click.echo(f"  - {artists} — {track.title} ({track.id})")
 
 
 if __name__ == "__main__":

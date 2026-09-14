@@ -9,7 +9,12 @@ SYSTEM_PROMPT = """\
 Разложи запрос в структурированный профиль для поиска в каталоге Яндекс Музыки.
 
 Правила:
-- search_queries: 3–5 конкретных фраз (русский или английский)
+- search_queries: 3–5 фраз для поиска треков в каталоге (русский или английский)
+- search_queries: называй жанры, стили, имена артистов и характерные сочетания
+  («Tycho ambient», «lo-fi hip hop instrumental», «post-punk dark»)
+- search_queries: НЕ используй generic SEO-фразы — coding music, programming,
+  study beats, workout playlist, music for, best tracks
+- Включи минимум 2 фразы с именами артистов из reference_artists
 - reference_artists: 4–8 реальных артистов, узнаваемых в каталоге
 - playlist_title: 2–4 слова на языке запроса
 - playlist_description: 1–2 предложения об атмосфере
@@ -29,9 +34,9 @@ FEW_SHOT_EXAMPLES: list[tuple[str, MusicProfile]] = [
             vocal_type="instrumental_only",
             reference_artists=["Tycho", "Nujabes", "Bonobo", "Helios"],
             search_queries=[
-                "lo-fi beats study",
-                "ambient coding night",
-                "instrumental chill focus",
+                "Tycho ambient instrumental",
+                "Nujabes chillhop",
+                "lo-fi hip hop instrumental",
             ],
             target_track_count=25,
         ),
@@ -51,9 +56,9 @@ FEW_SHOT_EXAMPLES: list[tuple[str, MusicProfile]] = [
                 "Fatboy Slim",
             ],
             search_queries=[
-                "workout electronic energetic",
-                "running playlist upbeat",
-                "cardio drum and bass",
+                "The Chemical Brothers electronic",
+                "Disclosure house",
+                "Pendulum drum and bass",
             ],
             target_track_count=30,
         ),

@@ -24,6 +24,7 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://prompt_dj:prompt_dj@db:5432/prompt_dj
+      REDIS_URL: redis://redis:6379/0
       EMBEDDING_MODEL_PATH: /opt/models
       HTTP_PROXY: ${HTTP_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
@@ -39,6 +40,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
+
+  redis:
+    image: redis:7
+    container_name: prompt-dj-redis
+    ports:
+      - "6379:6379"
 
   db:
     image: postgres:15
