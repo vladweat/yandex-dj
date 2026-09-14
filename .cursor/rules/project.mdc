@@ -1,0 +1,28 @@
+---
+description: Контекст проекта Prompt DJ — ТЗ, архитектура, стек
+alwaysApply: true
+---
+
+# Prompt DJ — контекст проекта
+
+Сервис генерации плейлистов: промпт → `MusicProfile` → retrieval (150–300) → scoring → export.
+
+Документы: `docs/SPEC.md`, `docs/STACK.md`. Latency: **7–12 сек**.
+
+## Стек (зафиксирован)
+
+- **LLM:** OpenAI API (`openai` + `instructor`, `gpt-4o-mini`)
+- **Embeddings:** `sentence-transformers` + `numpy` (сразу)
+- **UI:** FastAPI + uvicorn (первый)
+- **БД:** PostgreSQL 15 + SQLAlchemy
+- **CLI:** click | **Dev:** ruff, pytest
+
+## Модули
+
+`api/` `auth/` `db/` `llm/` `candidates/` `scoring/` `export/` `pipeline.py`
+
+## Принципы
+
+- `MusicProfile` — контракт LLM → пайплайн
+- Токены в PostgreSQL, зашифрованы Fernet
+- Diversity: ≤25 → max 2/артист; 26–50 → max 3

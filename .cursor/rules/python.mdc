@@ -1,0 +1,15 @@
+---
+description: Python-конвенции Prompt DJ
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Python
+
+- Type hints, Pydantic v2, `pydantic-settings`
+- **ruff** для lint и format
+- Async IO (FastAPI, retrieval); sync для embeddings
+- Исключения по слоям: `LLMError`, `RetrievalError`, `ScoringError`, `ExportError`
+- Токены: Fernet (`cryptography`) → PostgreSQL
+- Lazy import для `sentence-transformers`
+- Тесты: **pytest** + `httpx` для FastAPI

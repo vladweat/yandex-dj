@@ -1,0 +1,31 @@
+---
+description: LLM MusicProfile и векторное ранжирование
+globs: "**/{llm,scoring}/**/*.py"
+alwaysApply: false
+---
+
+# LLM и Scoring
+
+## LLM
+
+- Выход: `MusicProfile` (`docs/LLM_SCHEMA.md`)
+- `instructor` + Pydantic v2, retry до 2 раз
+- `reference_artists`: 4–8, `search_queries`: 3–5
+
+## Паспорт трека
+
+```
+Название: {title}. Исполнитель: {artists}. Альбом: {album}. Жанр: {genre}. Версия: {version}
+```
+
+## Scoring
+
+1. Batch-эмбеддинг (`BAAI/bge-m3` или `intfloat/multilingual-e5-base`)
+2. Cosine similarity (`numpy`/`sklearn`)
+3. Diversity: 2 трека/артист (N≤25), 3 (N 26–50)
+4. Fallback: жанры + популярность
+
+## Модели
+
+- LLM: OpenAI `gpt-4o-mini` через `instructor`
+- Embeddings: `intfloat/multilingual-e5-base`, lazy singleton

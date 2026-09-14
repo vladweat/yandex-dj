@@ -1,0 +1,166 @@
+# Архитектура Prompt DJ
+
+Соответствует [SPEC.md](SPEC.md) §3.
+
+## Модули системы
+
+| Модуль | Код | Ответственность | Вход | Выход |
+|--------|-----|-----------------|------|-------|
+| Prompt Understanding | `llm/` | Декомпозиция NL-запроса | Промпт | `MusicProfile` |
+| Candidate Retrieval | `candidates/` | Сбор пула через API | `MusicProfile` | 150–300 `TrackCandidate` |
+| Scoring & Ranking | `scoring/` | Векторный скоринг | Промпт + кандидаты | `list[ScoredTrack]` |
+| Playlist Builder | `export/` | Создание плейлиста | Топ-N треков | URL плейлиста |
+| Auth & Sessions | `auth/` | Device Flow, шифрование токенов | — | `session_id` |
+| API | `api/` | FastAPI endpoints | HTTP | JSON |
+| Pipeline | `pipeline.py` | Оркестрация | Промпт + опции | Результат |
+
+## Пайплайн
+
+```
+[Пользователь] ──> (Промпт + session_id)
+                         │
+                         ▼
+              ┌──────────────────────┐
+              │ 1. LLM Engine       │  2–3 сек
+              │    → MusicProfile    │
+              └──────────┬───────────┘
+                         │
+                         ▼
+              ┌──────────────────────┐
+              │ 2. Retrieval        │  2–4 сек (async)
+              │    → 150–300 tracks  │
+              └──────────┬───────────┘
+                         │
+                         ▼
+              ┌──────────────────────┐
+              │ 3. Scoring          │  1–2 сек
+              │    → топ-N           │
+              └──────────┬───────────┘
+                         │
+                         ▼
+              ┌──────────────────────┐
+              │ 4. Export           │  1–2 сек
+              │    → playlist_url    │
+              └──────────────────────┘
+```
+
+**Целевой latency:** 7–12 сек.
+
+## Слой данных
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ PostgreSQL  │     │    Redis    │     │  yandex-    │
+│    15       │     │  кэш track  │     │  music API  │
+│             │     │  metadata   │     │             │
+│  users      │     │  (этап 3)   │     │             │
+│  tokens (*) │     │             │     │             │
+│  sessions   │     │             │     │             │
+└─────────────┘     └─────────────┘     └─────────────┘
+
+(*) токены зашифрованы Fernet; ORM — SQLAlchemy
+```
+
+## Этап 1: LLM Engine
+
+- Pydantic `MusicProfile` + `instructor`
+- Провайдер: OpenAI API (`openai` SDK, `gpt-4o-mini`) + `instructor`
+- Схема: [LLM_SCHEMA.md](LLM_SCHEMA.md)
+
+## Этап 2: Candidate Retrieval
+
+Параллельно (`asyncio`):
+
+| Источник | API | Лимит |
+|----------|-----|-------|
+| Поисковые фразы | `client.search(type_='track')` | все `search_queries` |
+| Референсные артисты | `client.artists_tracks` | топ-10 на артиста |
+| Эталонный трек | `client.tracks_similar` | если указан в промпте |
+
+**Нормализация:**
+- Дедуп по `track.id`
+- Дедуп по «Артист + Название»
+- Исключить `available == False`
+- Кэш метаданных в Redis (TTL 24h)
+
+## Этап 3: Scoring & Ranking
+
+**Паспорт трека:**
+```
+Название: {title}. Исполнитель: {artists}. Альбом: {album}. Жанр: {genre}. Версия: {version}
+```
+
+**Алгоритм:**
+1. Batch-эмбеддинг промпта и паспортов (`sentence-transformers`)
+2. Cosine similarity (`numpy`)
+3. Сортировка по убыванию score
+4. Diversity filtering (см. ниже)
+5. Топ-N
+
+**Diversity:**
+| Размер плейлиста | Max треков на артиста |
+|------------------|----------------------|
+| ≤25 | 2 |
+| 26–50 | 3 |
+
+**Fallback** (embeddings недоступны): совпадение `primary_genres` + популярность трека.
+
+**Модель:** `intfloat/multilingual-e5-base` (см. [STACK.md](STACK.md)).
+
+## Этап 4: Export
+
+1. `users_playlists_create(title=profile.playlist_title)`
+2. `users_playlists_insert_track()` — в порядке score
+3. Описание: `profile.playlist_description` + исходный промпт
+4. URL: `https://music.yandex.ru/users/{login}/playlists/{kind}`
+
+## Интерфейсы
+
+| Интерфейс | Стек | Приоритет |
+|-----------|------|-----------|
+| REST API | FastAPI + uvicorn | **Первый UI** |
+| CLI | click | Отладка |
+| Web | Next.js + Tailwind | Backlog |
+| Telegram | aiogram 3.x | Backlog |
+
+API-контракты: [API.md](API.md).
+
+## Обработка ошибок
+
+| Ситуация | Поведение |
+|----------|-----------|
+| LLM: невалидный JSON | Retry через instructor (до 2 раз) |
+| Пул < 100 кандидатов | Расширить search_queries, повторить |
+| HTTP 429 от Яндекса | Exponential backoff, retry |
+| Токен истёк | 401 → переавторизация Device Flow |
+| Embeddings недоступны | Fallback-скоринг |
+| Трек `available=False` | Пропустить, следующий по score |
+
+## Структура кода
+
+```
+src/prompt_dj/
+├── auth/           # Device Flow, шифрование, сессии
+├── api/            # FastAPI routes
+├── llm/            # MusicProfile, instructor
+├── candidates/     # async retrieval
+├── scoring/        # embeddings, diversity
+├── export/         # playlist builder
+├── db/             # PostgreSQL / SQLAlchemy
+├── cache/          # Redis wrapper
+└── pipeline.py
+```
+
+## Конфигурация
+
+См. `.env.example`. Ключевые переменные:
+
+```env
+DATABASE_URL=postgresql://prompt_dj:prompt_dj@localhost:5432/prompt_dj
+OPENAI_API_KEY=
+LLM_MODEL=gpt-4o-mini
+EMBEDDING_MODEL=intfloat/multilingual-e5-base
+TOKEN_ENCRYPTION_KEY=
+```
+
+Окружение dev-машины: [INFRASTRUCTURE.md](INFRASTRUCTURE.md).

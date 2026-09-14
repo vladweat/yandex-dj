@@ -1,0 +1,136 @@
+# Стек технологий (зафиксирован)
+
+> Итоговые решения по инструментам и библиотекам. При расхождении с черновиками в других документах — приоритет у этого файла.
+
+## Язык и окружение
+
+| Компонент | Выбор |
+|-----------|-------|
+| Python | 3.12 (совместим с 3.11+) |
+| Менеджер зависимостей | `pip` + `venv` |
+| Сборка | `pyproject.toml` |
+| Линтер / форматтер | **ruff** |
+| Тесты | **pytest** |
+| Контейнеризация | Docker + Docker Compose |
+
+## Яндекс Музыка
+
+| Компонент | Выбор |
+|-----------|-------|
+| Клиент API | **yandex-music** v3+ |
+| Авторизация | OAuth Device Flow |
+| Хранение токена | PostgreSQL (зашифрован Fernet) |
+
+## LLM
+
+| Компонент | Выбор |
+|-----------|-------|
+| Провайдер | **OpenAI** (только API, без Ollama) |
+| SDK | **openai** (официальный) |
+| Модель | `gpt-4o-mini` (основная), `gpt-4o` (при необходимости) |
+| Structured output | **instructor** + Pydantic v2 |
+| Схема | `MusicProfile` |
+
+## Embeddings и скоринг
+
+| Компонент | Выбор | Примечание |
+|-----------|-------|------------|
+| Библиотека | **sentence-transformers** | С этапа scoring |
+| Модель | `intfloat/multilingual-e5-base` | Меньше RAM на dev-машине |
+| Математика | **numpy** | Cosine similarity |
+| Fallback | Жанры + популярность | При сбое загрузки модели |
+
+Embeddings подключаются **сразу** (не откладываются на поздний этап).
+
+## Бэкенд и UI
+
+| Компонент | Выбор |
+|-----------|-------|
+| Framework | **FastAPI** |
+| ASGI-сервер | **uvicorn** |
+| CLI (вспомогательный) | **click** |
+| UI (первый) | **FastAPI** (REST + Swagger) |
+
+Telegram-бот и Next.js — в backlog, не MVP.
+
+## База данных
+
+| Компонент | Выбор |
+|-----------|-------|
+| СУБД | **PostgreSQL 15** (Docker-образ `postgres:15`) |
+| ORM | **SQLAlchemy** |
+| Миграции | **Alembic** (при появлении схемы) |
+| Шифрование токенов | **cryptography** (Fernet) |
+
+SQLite не используется.
+
+## Кэш (позже)
+
+| Компонент | Выбор | Когда |
+|-----------|-------|-------|
+| Redis 7 | Кэш метаданных треков | Этап 3 (retrieval) |
+
+## Конфигурация
+
+| Компонент | Выбор |
+|-----------|-------|
+| Настройки | **pydantic-settings** |
+| Переменные окружения | `.env` + **python-dotenv** |
+
+## Не используем на MVP
+
+| Компонент | Причина |
+|-----------|---------|
+| Ollama / локальные LLM | OpenAI API; 3.8 GiB RAM |
+| SQLite | PostgreSQL с первого этапа |
+| typer | click |
+| Telegram / aiogram | FastAPI первым |
+| Celery / Arq | Пайплайн укладывается в 7–12 сек |
+| Qdrant | Пул 150–300 в памяти |
+| scikit-learn | Достаточно numpy |
+
+## Зависимости (сводка)
+
+```
+# core
+yandex-music
+pydantic
+pydantic-settings
+python-dotenv
+cryptography
+
+# llm
+openai
+instructor
+
+# ml
+sentence-transformers
+numpy
+torch  # transitive dep of sentence-transformers
+
+# api
+fastapi
+uvicorn[standard]
+
+# db
+sqlalchemy
+psycopg2-binary  # или asyncpg при async SQLAlchemy
+alembic
+
+# cli
+click
+
+# dev
+pytest
+ruff
+httpx  # тесты FastAPI
+```
+
+## Docker-сервисы
+
+```yaml
+services:
+  db:      postgres:15
+  redis:   redis:7      # этап 3+
+  api:     python:3.12-slim
+```
