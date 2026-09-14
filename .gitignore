@@ -4,8 +4,14 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+backend/.venv/
+backend/.libs/
+backend/.models/
 dist/
 build/
+
+# Auth pending state (device_code)
+backend/.auth/
 
 # Secrets
 .env
@@ -30,3 +36,6 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Alembic
+alembic/versions/*.pyc
