@@ -31,6 +31,12 @@ token
 .DS_Store
 Thumbs.db
 
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
+
 # Test
 .pytest_cache/
 .coverage

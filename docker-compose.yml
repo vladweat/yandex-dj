@@ -57,5 +57,22 @@ services:
       timeout: 5s
       retries: 5
 
+  frontend:
+    image: prompt-dj-frontend:latest
+    pull_policy: never
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      network: none
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: prompt-dj-frontend
+    ports:
+      - "3001:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - api
+
 volumes:
   prompt_dj_pgdata:

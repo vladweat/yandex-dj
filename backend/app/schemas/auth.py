@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -16,3 +18,10 @@ class DeviceFlowPollRequest(BaseModel):
 class DeviceFlowPollResponse(BaseModel):
     status: str
     session_id: str | None = None
+
+
+class AuthMeResponse(BaseModel):
+    session_id: str
+    login: str
+    yandex_uid: int
+    expires_at: datetime

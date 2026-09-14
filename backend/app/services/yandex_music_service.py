@@ -96,3 +96,9 @@ class YandexMusicService:
         if account is None or account.uid is None:
             raise YandexMusicError("Yandex account is missing in status response")
         return account.uid, account.login or str(account.uid)
+
+    async def get_account_status_data(self, access_token: str) -> dict:
+        """OAuth-токен → account/status (сериализация Status.to_dict())."""
+        client = await self.init_client(access_token)
+        status = await self.get_account_status(client)
+        return status.to_dict()
