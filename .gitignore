@@ -20,9 +20,8 @@ backend/.auth/
 token
 *.token
 
-# ML models cache
+# ML models cache (backend/.models/ — выше)
 .cache/
-models/
 
 # IDE
 .idea/
