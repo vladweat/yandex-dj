@@ -10,6 +10,7 @@ from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.services.auth_service import AuthService
 from app.services.health_service import HealthService
+from app.services.llm_service import LLMService
 from app.services.playlist_service import PlaylistService
 from app.services.yandex_account_service import YandexAccountService
 from app.services.yandex_music_service import YandexMusicService
@@ -31,6 +32,10 @@ def get_yandex_account_service(
 
 def get_playlist_service() -> PlaylistService:
     return PlaylistService()
+
+
+def get_llm_service() -> LLMService:
+    return LLMService()
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:

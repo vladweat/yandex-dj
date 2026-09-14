@@ -12,3 +12,13 @@ class MusicProfile(BaseModel):
     reference_artists: list[str] = Field(min_length=4, max_length=8)
     search_queries: list[str] = Field(min_length=3, max_length=5)
     target_track_count: int = Field(default=25, ge=1, le=50)
+
+
+class ParsePromptRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+    track_count: int | None = Field(default=None, ge=1, le=50)
+    instrumental_only: bool = False
+
+
+class ParsePromptResponse(BaseModel):
+    profile: MusicProfile
