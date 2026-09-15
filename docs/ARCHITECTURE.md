@@ -6,13 +6,13 @@
 
 | Модуль | Код | Ответственность | Вход | Выход |
 |--------|-----|-----------------|------|-------|
-| Prompt Understanding | `llm/` | Декомпозиция NL-запроса | Промпт | `MusicProfile` |
-| Candidate Retrieval | `candidates/` | Сбор пула через API | `MusicProfile` | 150–300 `TrackCandidate` |
-| Scoring & Ranking | `scoring/` | Векторный скоринг | Промпт + кандидаты | `list[ScoredTrack]` |
-| Playlist Builder | `export/` | Создание плейлиста | Топ-N треков | URL плейлиста |
-| Auth & Sessions | `auth/` | Device Flow, шифрование токенов | — | `session_id` |
-| API | `api/` | FastAPI endpoints | HTTP | JSON |
-| Pipeline | `pipeline.py` | Оркестрация | Промпт + опции | Результат |
+| Prompt Understanding | `services/llm_service.py` | Декомпозиция NL-запроса | Промпт | `MusicProfile` |
+| Candidate Retrieval | `services/retrieval_service.py` | Сбор пула через API | `MusicProfile` | 150–300 `TrackCandidate` |
+| Scoring & Ranking | `services/scoring_service.py` + `utils/scoring.py` | Векторный скоринг | Промпт + кандидаты | `list[ScoredTrack]` |
+| Playlist Builder | `services/yandex_music_service.py` | Создание плейлиста | Топ-N треков | URL плейлиста |
+| Auth & Sessions | `services/` + `api/.../auth` | Device Flow, шифрование токенов | — | `session_id` |
+| API | `api/v1/endpoints/` | FastAPI endpoints | HTTP | JSON |
+| Pipeline | `services/playlist_service.py` | Оркестрация generate | Промпт + опции | `PlaylistGenerateResponse` |
 
 ## Пайплайн
 
@@ -74,7 +74,7 @@
 | Источник | API | Лимит |
 |----------|-----|-------|
 | Поисковые фразы | `client.search(type_='track')` | все `search_queries` |
-| Референсные артисты | `client.artists_tracks` | топ-10 на артиста |
+| Референсные артисты | `client.artists_tracks` | топ-N (`artist_tracks_limit`, default 20) |
 | Эталонный трек | `client.tracks_similar` | если указан в промпте |
 
 **Нормализация:**
@@ -93,18 +93,17 @@
 Для embedding используется компактная форма `embedding_passport()` — `{title}. {artists}. {genre}` (меньше токенов, быстрее encode).
 
 **Алгоритм:**
-1. Pre-filter: fallback-ранжирование → top `scoring_embed_limit` (80) для batch-embed
-2. Batch-эмбеддинг query + паспортов (`sentence-transformers`, E5-префиксы `query:` / `passage:`)
-3. Cosine similarity (`numpy`), boost reference artists (+8%)
-4. Merge с fallback-хвостом остальных кандидатов (чтобы diversity набрал target_track_count)
-5. Diversity filtering → топ-N
-6. Warmup модели при старте API (`lifespan`)
+1. Pre-filter SEO/мусор (`quality.py`) → clean-пул
+2. Batch-эмбеддинг query + паспортов (`sentence-transformers`, E5 `query:` / `passage:`); `SCORING_EMBED_LIMIT=0` = весь пул
+3. Cosine similarity (`numpy`) + soft reference anchor boost (+0.03)
+4. Select: top-median gap → elbow → soft/tail fill → diversity + cap якорей ~60%
+5. Warmup модели при старте API (`lifespan`)
 
 **Diversity:**
-| Размер плейлиста | Max треков на артиста |
-|------------------|----------------------|
-| ≤25 | 2 |
-| 26–50 | 3 |
+| Режим | Max треков на артиста |
+|-------|----------------------|
+| normal | `MAX_TRACKS_PER_ARTIST` (env, default 2); якоря 3 / fill 5; суммарный cap ~60% |
+| high | 1; якоря 2 / fill 3 |
 
 **Fallback** (embeddings недоступны): совпадение `primary_genres` + reference artists + порядок retrieval как прокси популярности.
 
@@ -169,7 +168,7 @@ DATABASE_URL=postgresql+asyncpg://prompt_dj:prompt_dj@localhost/prompt_dj
 OPENAI_API_KEY=
 LLM_MODEL=gpt-4o-mini
 EMBEDDING_MODEL=intfloat/multilingual-e5-base
-SCORING_EMBED_LIMIT=80
+SCORING_EMBED_LIMIT=0
 TOKEN_ENCRYPTION_KEY=
 ```
 

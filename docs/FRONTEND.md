@@ -33,13 +33,13 @@ Prompt DJ: **Bearer `session_id`** (UUID из Device Flow).
 
 Одна колонка (без split-pane docwise):
 
-1. **Форма:** промпт, `track_count`, `instrumental_only`, `diversity` (normal/high), `exclude_artists` (через запятую).
-2. **Prefill:** `?prompt=…` из query; draft из истории («Повторить»).
+1. **Форма:** промпт, `track_count`, `instrumental_only`, `diversity` (normal/high), `exclude_artists` (через запятую); кнопка «Отменить» во время запроса (`AbortController`).
+2. **Prefill:** `?prompt=…` из query; draft из истории («Повторить») — **включая options**.
 3. **Быстрые примеры:** кнопки под textarea (kitchen / coding / synthwave).
-4. **Submit:** `POST /api/v1/playlists/generate`; при `401` — сброс → `/login`.
+4. **Submit:** `POST /api/v1/playlists/generate`; при `401` — сброс → `/login`; `504` — toast таймаута; `warnings` — info toast.
 5. **Состояния:** idle → loading («Генерируем…») → success | error; сеть/502/503 → баннер «API недоступен».
-6. **Результат:** `title`, `description`, ссылка в Яндекс, «Копировать ссылку и промпт», «Ещё вариант» (`source_id`, без LLM), badges `pool_stats`, блок `MusicProfile`, таблица треков.
-7. **История:** `GET /api/v1/playlists` — список; клик → `GET /playlists/{id}`; «Повторить» → prefill промпта.
+6. **Результат:** `title`, `description`, ссылка в Яндекс, «Копировать ссылку и промпт», «Ещё вариант» (`source_id` + **те же options**), badges `pool_stats`, блок `MusicProfile`, таблица треков.
+7. **История:** `GET /api/v1/playlists` — список с `options`; клик → `GET /playlists/{id}`; «Повторить» → prefill промпта **и опций**.
 
 Ошибки — тост/баннер, без разрыва страницы:
 
@@ -48,7 +48,9 @@ Prompt DJ: **Bearer `session_id`** (UUID из Device Flow).
 | `0` / сеть | Баннер + тост «API недоступен» |
 | `401` | Сброс `session_id`, тост, редирект на `/login` |
 | `422` | Валидация промпта под полем (1–2000 символов, `track_count` 1–50) |
+| `499` (abort) | Тост «Генерация отменена» |
 | `502` / `503` | Баннер/тост «API недоступен» |
+| `504` | Тост: превышен `PIPELINE_TIMEOUT_SEC` |
 
 Полный контракт: [API.md](API.md) § Playlists.  
 Качество: [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md).

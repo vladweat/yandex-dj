@@ -1,13 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ApiRequestError, clearSessionId, generatePlaylist } from "@/lib/api";
+import { clearSessionId, generatePlaylist } from "@/lib/api";
+import {
+  classifyGenerateApiError,
+  generationOptionsFromResult,
+  pushGenerateWarnings,
+} from "@/features/playlist/playlist-form-utils";
 import { usePlaylistStore } from "@/features/playlist/stores/playlist-store";
 import { useToastStore } from "@/stores/toast-store";
 import { useRouter } from "next/navigation";
@@ -31,6 +36,7 @@ export function PlaylistResult() {
   const pushToast = useToastStore((state) => state.push);
   const [regenLoading, setRegenLoading] = useState(false);
   const [copyDone, setCopyDone] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   if (!result) return null;
 
@@ -52,34 +58,41 @@ export function PlaylistResult() {
 
   async function handleAnotherVariant() {
     setRegenLoading(true);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const opts = generationOptionsFromResult(current);
     try {
-      const response = await generatePlaylist({
-        prompt: current.prompt,
-        track_count: current.profile.target_track_count,
-        instrumental_only: current.profile.vocal_type === "instrumental_only",
-        diversity: "normal",
-        source_id: current.id,
-      });
+      const response = await generatePlaylist(
+        {
+          prompt: current.prompt,
+          track_count: opts.track_count,
+          instrumental_only: opts.instrumental_only,
+          exclude_artists: opts.exclude_artists,
+          diversity: opts.diversity,
+          source_id: current.id,
+        },
+        { signal: controller.signal },
+      );
       setResult(response);
+      pushGenerateWarnings(response, pushToast);
       void queryClient.invalidateQueries({ queryKey: ["playlists", "history"] });
     } catch (err) {
-      if (err instanceof ApiRequestError) {
-        if (err.status === 0 || err.status === 502 || err.status === 503) {
-          pushToast("API недоступен", "error");
-          return;
-        }
-        if (err.status === 401) {
-          clearSessionId();
-          pushToast("Сессия истекла — войдите снова", "error");
-          router.replace("/login");
-          return;
-        }
-        pushToast(err.message, "error");
-        return;
+      const action = classifyGenerateApiError(err);
+      if (action.kind === "cancelled") {
+        pushToast("Генерация отменена", "info");
+      } else if (action.kind === "unauthorized") {
+        clearSessionId();
+        pushToast("Сессия истекла — войдите снова", "error");
+        router.replace("/login");
+      } else if (action.kind === "timeout" || action.kind === "message") {
+        pushToast(action.message, "error");
+      } else if (action.kind === "unavailable") {
+        pushToast("API недоступен", "error");
       }
-      pushToast("API недоступен", "error");
     } finally {
       setRegenLoading(false);
+      abortRef.current = null;
     }
   }
 
@@ -110,6 +123,15 @@ export function PlaylistResult() {
             {regenLoading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             Ещё вариант
           </Button>
+          {regenLoading ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => abortRef.current?.abort()}
+            >
+              Отменить
+            </Button>
+          ) : null}
           <Badge variant="secondary">{current.tracks.length} треков</Badge>
           {stats ? (
             <>

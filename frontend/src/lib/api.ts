@@ -88,7 +88,10 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   let response: Response;
   try {
     response = await authorizedFetch(path, options);
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiRequestError("Генерация отменена", 499);
+    }
     throw new ApiRequestError("API недоступен", 0);
   }
 
@@ -155,10 +158,12 @@ export async function fetchYandexAccount(): Promise<YandexStatusResponse> {
 
 export async function generatePlaylist(
   body: PlaylistGenerateRequest,
+  init?: { signal?: AbortSignal },
 ): Promise<PlaylistGenerateResponse> {
   return apiFetch<PlaylistGenerateResponse>("/playlists/generate", {
     method: "POST",
     body: JSON.stringify(body),
+    signal: init?.signal,
   });
 }
 

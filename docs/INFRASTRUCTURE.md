@@ -27,7 +27,7 @@
 |-------|--------|------------------------|
 | `python:3.12-slim` | 179 MB | Базовый образ бэкенда |
 | `postgres:15` | 633 MB | PostgreSQL (продакшен) |
-| `redis:7` | 170 MB | Кэш метаданных, сессии, Celery broker |
+| `redis:7` | 170 MB | Кэш метаданных треков (TTL) |
 | `nginx:alpine` | 93.6 MB | Reverse proxy для FastAPI + Next.js |
 | `node:20-alpine` | 194 MB | Сборка фронтенда Next.js |
 

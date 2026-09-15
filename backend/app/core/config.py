@@ -24,9 +24,8 @@ class Settings(BaseSettings):
     max_candidates: int = 300
     min_candidates_pool: int = 100
     target_candidates_pool: int = 150
-    playlist_size: int = 25
     max_tracks_per_artist: int = 2
-    pipeline_timeout_sec: int = 12
+    pipeline_timeout_sec: int = 45
     track_cache_ttl_sec: int = 86400
     artist_tracks_limit: int = 20
     search_tracks_per_query: int = 50

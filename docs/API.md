@@ -301,7 +301,14 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
     "reference_artists": ["Kavinsky", "Perturbator", "Gunship", "Timecop1983"],
     "search_queries": ["synthwave night drive", "retrowave neon", "dark synth"],
     "target_track_count": 25
-  }
+  },
+  "options": {
+    "track_count": 25,
+    "instrumental_only": false,
+    "exclude_artists": ["Kavinsky"],
+    "diversity": "normal"
+  },
+  "warnings": []
 }
 ```
 
@@ -319,6 +326,8 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 | `tracks[].similarity_score` | scoring | cosine similarity (embedding) или fallback-score; округление до 4 знаков |
 | `pool_stats` | retrieval + scoring | `raw` / `clean` (после pre-filter) / `selected`; диагностика полноты |
 | `profile` | LLM или reuse из `source_id` | полный `MusicProfile` после опций (`exclude_artists` и т.д.) |
+| `options` | запрос | `track_count`, `instrumental_only`, `exclude_artists`, `diversity` — для regen/history |
+| `warnings` | pipeline | напр. `exclude_artists` не сняты с якорей (нужно ≥4); не блокирует `200` |
 
 **Export (что происходит в Яндексе):**
 
@@ -347,6 +356,7 @@ Playlist pipeline: llm=2140ms retrieval=3214ms scoring=1842ms export=1520ms tota
 | `401` | нет/невалидный Bearer, истёкшая сессия | `Invalid or expired session` |
 | `404` | `source_id` не найден или чужой | `Source generation not found` |
 | `422` | пустой промпт, `track_count` вне 1–50, промпт > 2000 символов | Pydantic validation |
+| `504` | превышен `PIPELINE_TIMEOUT_SEC` (default 45) | `Playlist generation exceeded …s (PIPELINE_TIMEOUT_SEC)` |
 | `500` | scoring вернул 0 треков или внутренняя ошибка ранжирования | `Scoring returned no tracks` |
 | `502` | Яндекс API недоступен после retry, ошибка export (создание/вставка/описание) | текст исключения |
 | `503` | LLM недоступен (`OPENAI_API_KEY`), retrieval без кандидатов, сбой retrieval | `OPENAI_API_KEY is not configured`, `No candidates found for the prompt` |
@@ -380,6 +390,12 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
       "title": "Ночной неон",
       "playlist_url": "https://music.yandex.ru/users/username/playlists/1003",
       "pool_stats": {"raw": 180, "clean": 72, "selected": 25},
+      "options": {
+        "track_count": 25,
+        "instrumental_only": false,
+        "exclude_artists": [],
+        "diversity": "high"
+      },
       "created_at": "2026-09-15T12:00:00Z"
     }
   ],

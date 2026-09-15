@@ -9,7 +9,7 @@
 5. [FRONTEND.md](FRONTEND.md) — маршруты, Device Flow UX, экран генерации.
 6. [REUSE_FROM_DOCWISE.md](REUSE_FROM_DOCWISE.md) — что копировать из соседнего `../docwise`.
 7. [CONVENTIONS.md](CONVENTIONS.md) — слои backend/frontend, соглашения.
-8. [DEVELOPMENT.md](DEVELOPMENT.md) — roadmap с чекбоксами (MVP ✅ → 5.5 качество → 6 продукт → 7 backlog).
+8. [DEVELOPMENT.md](DEVELOPMENT.md) — roadmap + § «Техдолг» (MVP/этап 6 ✅ → 5.5 качество → техдолг → 7 backlog).
 9. [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — качество плейлистов, P1/P2, handoff для агентов.
 10. [INFRASTRUCTURE.md](INFRASTRUCTURE.md) — Docker, offline-сборка, ресурсы dev-машины.
 

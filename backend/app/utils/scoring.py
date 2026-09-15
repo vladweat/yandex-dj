@@ -19,6 +19,11 @@ HIGH_DIVERSITY_MAX_PER_ARTIST = 1
 HIGH_DIVERSITY_ANCHOR_MAX = 2
 HIGH_DIVERSITY_ANCHOR_FILL = 3
 TAIL_SCORE_DROP = 0.04
+# Доля плейлиста на reference artists (суммарно, не per-artist).
+ANCHOR_PLAYLIST_CAP_RATIO = 0.6
+# Хвост далеко от медианы топ-K — типичный embedding false positive (Hauvy и т.п.).
+TOP_MEDIAN_WINDOW = 10
+TOP_MEDIAN_MAX_GAP = 0.15
 
 
 def build_prompt_text(profile: MusicProfile, user_prompt: str | None = None) -> str:
@@ -37,8 +42,17 @@ def build_prompt_text(profile: MusicProfile, user_prompt: str | None = None) -> 
     return ". ".join(parts)
 
 
-def max_tracks_per_artist(playlist_size: int) -> int:
-    return 2 if playlist_size <= 25 else 3
+def max_tracks_per_artist(playlist_size: int, *, configured: int | None = None) -> int:
+    """Лимит non-anchor артиста; `configured` = settings.max_tracks_per_artist."""
+    base = configured if configured is not None else 2
+    if base < 1:
+        base = 1
+    return base if playlist_size <= 25 else max(base, 3)
+
+
+def max_anchor_tracks(playlist_size: int) -> int:
+    """Суммарный cap якорей (~60% плейлиста)."""
+    return max(1, int(playlist_size * ANCHOR_PLAYLIST_CAP_RATIO))
 
 
 def cosine_scores(query_vec: np.ndarray, doc_vecs: np.ndarray) -> np.ndarray:
@@ -85,6 +99,25 @@ def adaptive_score_floor(scores: list[float], limit: int) -> float:
     return max(window[-1] - 1e-6, window[0] * 0.82)
 
 
+def filter_by_top_median_gap(
+    ranked: list[tuple[TrackCandidate, float]],
+    *,
+    window: int = TOP_MEDIAN_WINDOW,
+    max_gap: float = TOP_MEDIAN_MAX_GAP,
+) -> list[tuple[TrackCandidate, float]]:
+    """
+    Убирает embedding false positives в хвосте: score << медианы топ-K.
+
+    Не привязан к жанру/промпту. На маленьких пулах (< window) не режет.
+    """
+    if len(ranked) < window:
+        return ranked
+    top_scores = [score for _, score in ranked[:window]]
+    median = float(np.median(np.asarray(top_scores, dtype=np.float64)))
+    floor = median - max_gap
+    return [(track, score) for track, score in ranked if score >= floor]
+
+
 def apply_diversity_filter(
     ranked: list[tuple[TrackCandidate, float]],
     *,
@@ -95,12 +128,15 @@ def apply_diversity_filter(
     artist_counts: dict[str, int] | None = None,
     profile: MusicProfile | None = None,
     anchor_max_per_artist: int | None = None,
+    max_anchor_total: int | None = None,
+    anchor_total: int = 0,
 ) -> list[tuple[TrackCandidate, float]]:
     from app.utils.quality import normalize_song_title
 
     counts: dict[str, int] = dict(artist_counts or {})
     title_keys = set(seen_titles or ())
     selected: list[tuple[TrackCandidate, float]] = []
+    anchors_used = anchor_total
 
     for track, score in ranked:
         if len(selected) >= limit:
@@ -113,15 +149,19 @@ def apply_diversity_filter(
         keys = diversity_artist_keys(track)
         if not keys:
             keys = [track.title.lower()]
+        is_anchor = profile is not None and references_in_artists(track, profile)
+        if is_anchor and max_anchor_total is not None and anchors_used >= max_anchor_total:
+            continue
         per_artist_limit = max_per_artist
-        if profile is not None and anchor_max_per_artist is not None:
-            if references_in_artists(track, profile):
-                per_artist_limit = anchor_max_per_artist
+        if is_anchor and anchor_max_per_artist is not None:
+            per_artist_limit = anchor_max_per_artist
         if any(counts.get(key, 0) >= per_artist_limit for key in keys):
             continue
         for key in keys:
             counts[key] = counts.get(key, 0) + 1
         title_keys.add(title_key)
+        if is_anchor:
+            anchors_used += 1
         selected.append((track, score))
 
     return selected
@@ -146,6 +186,7 @@ def _append_diverse_tracks(
     min_score: float | None,
     profile: MusicProfile,
     anchor_max_per_artist: int,
+    max_anchor_total: int,
 ) -> list[tuple[TrackCandidate, float]]:
     from app.utils.quality import normalize_song_title
 
@@ -157,6 +198,7 @@ def _append_diverse_tracks(
     for track, _ in selected:
         for key in diversity_artist_keys(track):
             artist_counts[key] = artist_counts.get(key, 0) + 1
+    anchors_used = sum(1 for track, _ in selected if references_in_artists(track, profile))
 
     extra = apply_diversity_filter(
         ranked,
@@ -167,6 +209,8 @@ def _append_diverse_tracks(
         artist_counts=artist_counts,
         profile=profile,
         anchor_max_per_artist=anchor_max_per_artist,
+        max_anchor_total=max_anchor_total,
+        anchor_total=anchors_used,
     )
     return selected + extra
 
@@ -195,19 +239,29 @@ def select_playlist_tracks(
     profile: MusicProfile,
     *,
     diversity: str = "normal",
+    max_per_artist: int | None = None,
 ) -> list[tuple[TrackCandidate, float]]:
-    """Топ-N: elbow + diversity; fill до limit с мягким порогом и расширенным лимитом якорей."""
+    """Топ-N: gap → elbow + diversity; fill до limit с cap якорей ~60%."""
     limit = profile.target_track_count
     if not ranked:
         return []
 
+    ranked = filter_by_top_median_gap(ranked)
+    if not ranked:
+        return []
+
     scores = [score for _, score in ranked]
+    anchor_cap = max_anchor_tracks(limit)
     if diversity == "high":
-        max_per_artist = HIGH_DIVERSITY_MAX_PER_ARTIST
+        per_artist = HIGH_DIVERSITY_MAX_PER_ARTIST
         anchor_max = HIGH_DIVERSITY_ANCHOR_MAX
         anchor_fill = HIGH_DIVERSITY_ANCHOR_FILL
     else:
-        max_per_artist = max_tracks_per_artist(limit)
+        per_artist = (
+            max_per_artist
+            if max_per_artist is not None
+            else max_tracks_per_artist(limit)
+        )
         anchor_max = ANCHOR_MAX_TRACKS_PER_ARTIST
         anchor_fill = ANCHOR_FILL_MAX_TRACKS_PER_ARTIST
     strict_floor = _playlist_score_floor(scores, limit, strict=True)
@@ -215,10 +269,11 @@ def select_playlist_tracks(
     selected = apply_diversity_filter(
         ranked,
         limit=limit,
-        max_per_artist=max_per_artist,
+        max_per_artist=per_artist,
         min_score=strict_floor,
         profile=profile,
         anchor_max_per_artist=anchor_max,
+        max_anchor_total=anchor_cap,
     )
     soft_floor = _playlist_score_floor(scores, limit, strict=False)
     if len(selected) < limit and soft_floor < strict_floor:
@@ -226,10 +281,11 @@ def select_playlist_tracks(
             ranked,
             selected,
             limit=limit,
-            max_per_artist=max_per_artist,
+            max_per_artist=per_artist,
             min_score=soft_floor,
             profile=profile,
             anchor_max_per_artist=anchor_max,
+            max_anchor_total=anchor_cap,
         )
 
     if len(selected) < limit:
@@ -238,10 +294,11 @@ def select_playlist_tracks(
             ranked,
             selected,
             limit=limit,
-            max_per_artist=max_per_artist,
+            max_per_artist=per_artist,
             min_score=tail_floor,
             profile=profile,
             anchor_max_per_artist=anchor_fill,
+            max_anchor_total=anchor_cap,
         )
 
     return _sort_by_score(selected)[:limit]

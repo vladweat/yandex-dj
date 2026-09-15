@@ -10,6 +10,8 @@ import { ApiRequestError, clearSessionId, getPlaylist, listPlaylists } from "@/l
 import { usePlaylistStore } from "@/features/playlist/stores/playlist-store";
 import { useToastStore } from "@/stores/toast-store";
 import { useRouter } from "next/navigation";
+import { draftFromHistoryItem } from "@/features/playlist/playlist-form-utils";
+import type { PlaylistHistoryItem } from "@/types/playlist";
 
 function formatDate(iso: string): string {
   try {
@@ -52,15 +54,8 @@ export function PlaylistHistory() {
     }
   }
 
-  function reusePrompt(prompt: string) {
-    setDraft({
-      prompt,
-      trackCount: 25,
-      instrumentalOnly: false,
-      excludeArtists: "",
-      diversity: "normal",
-      sourceId: null,
-    });
+  function reusePrompt(item: PlaylistHistoryItem) {
+    setDraft(draftFromHistoryItem(item));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -68,7 +63,7 @@ export function PlaylistHistory() {
     <Panel
       className="mt-8"
       title="История генераций"
-      subtitle="Свои плейлисты из Prompt DJ. Клик — открыть результат; «повторить» — подставить промпт."
+      subtitle="Свои плейлисты из Prompt DJ. Клик — открыть результат; «повторить» — подставить промпт и опции."
     >
       <div className="mb-3 flex items-center gap-2">
         <Button
@@ -118,7 +113,7 @@ export function PlaylistHistory() {
                 {item.pool_stats ? (
                   <Badge variant="outline">selected {item.pool_stats.selected}</Badge>
                 ) : null}
-                <Button type="button" size="sm" variant="outline" onClick={() => reusePrompt(item.prompt)}>
+                <Button type="button" size="sm" variant="outline" onClick={() => reusePrompt(item)}>
                   <RotateCcw />
                   Повторить
                 </Button>

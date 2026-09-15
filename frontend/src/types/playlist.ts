@@ -34,6 +34,13 @@ export interface PlaylistPoolStats {
   selected: number;
 }
 
+export interface PlaylistGenerationOptions {
+  track_count: number;
+  instrumental_only: boolean;
+  exclude_artists: string[];
+  diversity: DiversityMode;
+}
+
 export interface PlaylistGenerateResponse {
   id: string;
   prompt: string;
@@ -43,6 +50,8 @@ export interface PlaylistGenerateResponse {
   tracks: PlaylistTrackResponse[];
   pool_stats?: PlaylistPoolStats | null;
   profile: MusicProfile;
+  options?: PlaylistGenerationOptions | null;
+  warnings?: string[];
 }
 
 export interface PlaylistHistoryItem {
@@ -51,6 +60,7 @@ export interface PlaylistHistoryItem {
   title: string;
   playlist_url: string;
   pool_stats?: PlaylistPoolStats | null;
+  options?: PlaylistGenerationOptions | null;
   created_at: string;
 }
 

@@ -1,7 +1,7 @@
 # Качество плейлистов — статус и handoff
 
 > **Для следующего агента.** Читать перед любыми правками retrieval/scoring/quality.  
-> Обновлено: 2026-09-15 — P0 закрыт (kitchen: 25/25, clean≈275); UI генерации включён.
+> Обновлено: 2026-09-15 — этап 5.5 P1/P2 ✅; этап 6 ✅; фокус C2 expand / eng debt.
 
 ## TL;DR
 
@@ -14,8 +14,8 @@
 | Топ релевантности | ✅ kitchen: Parcels / Khruangbin / Men I Trust / Camyo |
 | **Полнота N треков** | ✅ discovered similar + frequency-rank; tail fill без `score[N-1]` |
 | `pool_stats` в ответе | ✅ `{raw, clean, selected}` |
-| Latency 7–12 сек | ⚠️ Часто 10–20+ сек; feedback/второй embed только если selected < N |
-| Следующий фокус | P1 хвост → P2 latency → [DEVELOPMENT.md](DEVELOPMENT.md) этап 6 |
+| Latency 7–12 сек | ✅ Feedback: incremental `rank_pool_merge`; `SCORING_EMBED_LIMIT=0` |
+| Следующий фокус | C4 `quality.py` при SEO-правке; этап 7 backlog — [DEVELOPMENT.md](DEVELOPMENT.md) |
 
 **Не ходить по кругу:** не добавлять regex под конкретный промпт/жанр.
 
@@ -63,9 +63,9 @@ user prompt
     ↓ pre-filter (quality.py — универсальный SEO/мусор)
     ↓ embedding (prompt + description + genres + mood; БЕЗ reference_artists в query)
     ↓ +0.03 anchor boost (reference_artists в исполнителях)
-    ↓ select: elbow → soft fill → tail (last−0.04) → sort by score
-    ↓ diversity (2/3 обычно, 3 якорям, 5 якорям в tail)
-    ↓ [если selected < N] feedback: tops+similar лучших не-якорных → re-score
+    ↓ select: gap(median top-10) → elbow → soft fill → tail → sort by score
+    ↓ diversity (2/3 обычно, 3 якорям, 5 якорям в tail) + cap якорей ~60%
+    ↓ [если selected < N] feedback: tops+similar лучших не-якорных → incremental re-score
     ↓ export
 ```
 
@@ -125,9 +125,11 @@ user prompt
 |----------|----------|
 | `SCORING_EMBED_LIMIT` | `0` (весь пул) |
 | Anchor boost | `+0.03` |
-| Anchor slots | 3 (strict), 5 (tail fill) |
+| Anchor slots | 3 (strict), 5 (tail fill); **суммарный cap ~60%** плейлиста |
+| Top-median gap | медиана топ-10 − 0.15 (отсекает embedding FP вроде Hauvy) |
 | Fill фазы | strict elbow → soft (score[N−1]) → tail (**last−0.04**, без raise до score[N−1]) |
 | Финал | сортировка по `similarity_score` desc |
+| Feedback | `rank_pool_merge` — encode только новых кандидатов |
 
 **Критичный фикс shortfall 19/25:** tail не должен брать `max(..., scores[N-1])` — топ-N часто занят якорями на cap, и пол блокировал остальных артистов.
 
@@ -143,21 +145,19 @@ user prompt
 4. ✅ Tail fill без `score[N-1]` — kitchen `n=25`, `clean≈275`.
 5. Если API throttled — увеличить `yandex_rate_limit_delay_sec`, не убирать фильтры.
 
-### P1 — Хвост
+### P1 — Хвост ✅
 
-1. **Embedding false positives** (Hauvy «Vlone»): не лечится regex. Варианты:
-   - минимальный gap к медиане топ-10;
-   - штраф треков без жанрового пересечения с `primary_genres` (осторожно, универсально);
-   - rerank top-50 cross-encoder (дорого).
-2. **Перекос на якоря** (~80%): после набора 25 увеличить diversity на non-anchor или cap anchor at 60% плейлиста.
+1. ✅ Embedding false positives: `filter_by_top_median_gap` (медиана топ-10 − 0.15).
+2. ✅ Cap якорей ~60% (`max_anchor_tracks`).
 
-### P2 — Latency
+### P2 — Latency ✅
 
 1. ✅ Frontend показывает `tracks` + `similarity_score` + `pool_stats`.
-2. **Latency budget:** full-pool embed vs 7–12 сек — замерить; возможно `SCORING_EMBED_LIMIT=80`; меньше double-embed / feedback только при `selected < N`.
-3. ✅ Референсный curl живёт здесь и в [API.md](API.md).
+2. ✅ Double-embed убран: `rank_pool_merge` на feedback.
+3. ✅ `SCORING_EMBED_LIMIT=0` в `.env` / example / config.
+4. ✅ Референсный curl живёт здесь и в [API.md](API.md).
 
-**После P1→P2:** продуктовые фичи (история, регенерация, CI) — [DEVELOPMENT.md](DEVELOPMENT.md) этап 6.
+**Этап 6 (продукт/CI) ✅.** Дальше: техдолг B/C — [DEVELOPMENT.md](DEVELOPMENT.md) § «Техдолг».
 
 ---
 
@@ -183,7 +183,8 @@ cd backend && ./.venv/bin/python -m pytest tests/ -q
 make test
 ```
 
-Критичные: `tests/test_quality.py`, `tests/test_scoring.py`, `tests/test_retrieval.py`, `tests/test_playlist.py`.
+Критичные: `tests/test_quality.py`, `tests/test_scoring.py`, `tests/test_retrieval.py`, `tests/test_playlist.py`, `tests/test_golden_prompts.py`.  
+Долг: нет тестов shortfall → feedback expand → re-rank ([DEVELOPMENT.md](DEVELOPMENT.md) C1).
 
 После правок API: `docker compose restart api`.  
 Frontend: `make up-frontend` или hot-reload контейнера `frontend`.
@@ -195,4 +196,4 @@ Frontend: `make up-frontend` или hot-reload контейнера `frontend`.
 - [SPEC.md](SPEC.md) §4.3–4.4 — требования retrieval/scoring; §7–8 roadmap
 - [API.md](API.md) — контракт `POST /playlists/generate` + `pool_stats`
 - [FRONTEND.md](FRONTEND.md) — ручной тест через UI
-- [DEVELOPMENT.md](DEVELOPMENT.md) — этапы 5.5 (качество) → 6 (продукт) → 7 (backlog)
+- [DEVELOPMENT.md](DEVELOPMENT.md) — этапы 5.5 (качество) → техдолг → 7 (backlog); этап 6 ✅

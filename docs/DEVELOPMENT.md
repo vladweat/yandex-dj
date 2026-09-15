@@ -13,11 +13,12 @@
 | Auth / Playlists | ✅ Device Flow + `POST /playlists/generate` (end-to-end) |
 | Frontend | ✅ Next.js: `/login`, `/` (генерация + таблица + `pool_stats`) — [FRONTEND.md](FRONTEND.md) |
 | Пайплайн (LLM → export) | ✅ LLM → retrieval → scoring → export |
-| Качество плейлистов | ⚠️ P0 закрыт (kitchen 25/25); **P1 хвост** / **P2 latency** — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) |
+| Качество плейлистов | ✅ этап 5.5: P0/P1/P2 — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) |
 | Продукт (этап 6) | ✅ история / реген / profile / опции / UX / CI |
 | CI | ✅ `.github/workflows/ci.yml` — ruff + pytest + tsc/vitest |
+| Техдолг | § «Техдолг»: C2 expand unify / docs drift / FE DRY |
 
-**MVP закрыт.** Фокус: этап 5.5 (P1 → P2).
+**MVP, этап 5.5 и этап 6 закрыты.** Фокус: инженерия (C2+) → этап 7 backlog.
 
 ---
 
@@ -56,7 +57,7 @@
 - [x] `YandexMusicService` — обёртка `ClientAsync`, retry, rate limiting
 - [x] Эндпоинты `POST /api/v1/auth/device-flow/start` и `poll`
 - [x] CLI: `prompt-dj db`, `prompt-dj auth start` / `poll` / `import-token`
-- [ ] **Проверка на стенде:** миграции + Device Flow → токен в PostgreSQL
+- [x] **Проверка на стенде:** миграции + Device Flow → токен в PostgreSQL
 
 **Проверка (две ВМ / переключение интернета):**
 
@@ -200,19 +201,19 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 - [x] Scoring feedback при `selected < N`; `pool_stats` в ответе
 - [x] **P0:** kitchen curl/UI → `tracks.length == 25`, `clean ≥ 40`
 - [x] Frontend: генерация без заглушки, таблица + `pool_stats`
-- [ ] **P1:** хвост без embedding-мусора (Hauvy и т.п.); cap якорей ~60%
-- [ ] **P2:** latency budget 7–12 сек (`SCORING_EMBED_LIMIT` / меньше double-embed)
+- [x] **P1:** хвост без embedding-мусора (Hauvy и т.п.); cap якорей ~60%
+- [x] **P2:** latency budget 7–12 сек (`SCORING_EMBED_LIMIT` / меньше double-embed)
 
 **Handoff для агента:** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — не добавлять regex под промпт.  
 **UI-тест:** [FRONTEND.md](FRONTEND.md) § «Ручной тест UI».
 
-**Порядок:** P1 → P2, затем этап 6.
+**Порядок:** техдолг (опции regen/history, feedback-тесты) → этап 7.
 
 ---
 
 ## Этап 6. Продукт вокруг генерации + инженерия
 
-**Цель:** после стабильного качества — UX итерации и история; CI.
+**Цель:** после стабильного качества — UX итерации и история; CI. **Закрыт.**
 
 Приоритет сверху вниз:
 
@@ -229,15 +230,52 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 
 **Миграция:** `a1b2c3d4e5f6_add_playlist_generations` — `make migrate`.
 
+**Долг после этапа 6** (не блокер закрытия): см. § «Техдолг» → продукт / инженерия.
+
 ---
 
-## Этап 7. Backlog (после этапа 6)
+## Этап 7. Backlog (после 5.5 + техдолга)
 
 - [ ] Telegram-бот (`aiogram`) — тот же API
-- [ ] BPM-анализ (`librosa`) — сортировка по нарастанию темпа
+- [ ] BPM-анализ (`librosa`) — post-select reorder по флагу; 30-сек превью + кэш; **не** в hot path по умолчанию
 - [ ] Анализ lyrics (`tracks_lyrics`) — «без слов» / NSFW-фильтр
 - [ ] AI-обложка (Stable Diffusion / Flux)
-- [ ] Celery/Arq — только если генерация стабильно > ~15 сек или нужна очередь
+- [ ] Celery/Arq — только если генерация стабильно > ~15 сек или нужна очередь (в т.ч. BPM)
+
+---
+
+## Техдолг
+
+Актуально на 2026-09-15. Качество/latency детально — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md).
+
+### Приоритет A — качество и latency (этап 5.5)
+
+| # | Что | Где | Зачем |
+|---|-----|-----|--------|
+| A1 | ~~Embedding false positives в хвосте~~ | `utils/scoring.py` | ✅ `filter_by_top_median_gap` (медиана топ-10 − 0.15) |
+| A2 | ~~Cap якорей ~60% плейлиста~~ | `select_playlist_tracks` | ✅ `max_anchor_tracks` |
+| A3 | ~~Double-embed на feedback~~ | `playlist_service` / `rank_pool_merge` | ✅ encode только новых кандидатов |
+| A4 | ~~`SCORING_EMBED_LIMIT` drift~~ | `.env` / config | ✅ `0` везде (весь clean-пул) |
+
+### Приоритет B — продукт (дыры этапа 6)
+
+| # | Что | Где | Зачем |
+|---|-----|-----|--------|
+| B1 | ~~«Ещё вариант» сбрасывает опции~~ | `playlist-result.tsx` | ✅ берёт `options` из ответа |
+| B2 | ~~«Повторить» / history не восстанавливают options~~ | API + `playlist-history.tsx` | ✅ `options` в history/get/generate |
+| B3 | ~~`PIPELINE_TIMEOUT_SEC` мёртв~~ | endpoint + UI abort | ✅ `asyncio.wait_for` → 504; Cancel в форме |
+| B4 | ~~`exclude_artists` silent no-op~~ | `apply_exclude_artists` | ✅ `warnings[]` в ответе + toast |
+
+### Приоритет C — инженерия
+
+| # | Что | Где | Зачем |
+|---|-----|-----|--------|
+| C1 | ~~Нет тестов feedback-path~~ | `tests/test_playlist.py` | ✅ `rank_pool_merge` на shortfall |
+| C2 | ~~Дубль discovered vs feedback expand~~ | `retrieval_service.py` | ✅ общий `_expand_by_artist_names` |
+| C3 | ~~Дубль generate + error handling~~ | form / result / utils | ✅ `classifyGenerateApiError` + options helpers |
+| C4 | Размер `quality.py` (~445) | `utils/quality.py` | Не срочно; при SEO-правке сплит |
+
+**Порядок работ:** eng debt C2–C3 ✅ → C4 при необходимости. Этап 7 — backlog.
 
 ---
 

@@ -245,6 +245,71 @@ async def test_expand_discovered_artists_pulls_similar(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
+async def test_expand_from_artists_fetches_tops_and_similar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.services.retrieval_service.settings.feedback_similar_seeds", 2)
+    profile = _profile()
+    yandex = AsyncMock()
+    cache = AsyncMock()
+    cache.get_many.return_value = {}
+    cache.set_many.return_value = None
+    service = RetrievalService(yandex, cache)
+    client = MagicMock()
+    yandex.init_client.return_value = client
+
+    candidates = [_track("s1", "Power", "Pompeya")]
+    yandex.search_artist_id.return_value = "artist-pompeya"
+    yandex.artists_top_tracks.return_value = [
+        _ym_track("p1", "Passing By", "Pompeya"),
+    ]
+    yandex.tracks_similar_list.return_value = [
+        _ym_track("sim1", "Neighbor", "Soulive"),
+    ]
+    yandex.fetch_tracks.return_value = []
+
+    expanded = await service.expand_from_artists(
+        profile,
+        "token-123",
+        candidates,
+        ["Pompeya"],
+        used_seed_ids=set(),
+    )
+
+    assert {track.id for track in expanded} >= {"s1", "p1", "sim1"}
+    yandex.init_client.assert_awaited_once_with("token-123")
+    yandex.search_artist_id.assert_awaited_with(client, "Pompeya")
+    yandex.tracks_similar_list.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expand_from_artists_reuses_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.services.retrieval_service.settings.feedback_similar_seeds", 0)
+    profile = _profile()
+    yandex = AsyncMock()
+    cache = AsyncMock()
+    cache.get_many.return_value = {}
+    cache.set_many.return_value = None
+    service = RetrievalService(yandex, cache)
+    client = MagicMock()
+
+    yandex.search_artist_id.return_value = "artist-x"
+    yandex.artists_top_tracks.return_value = [_ym_track("x1", "Top", "Other Band")]
+    yandex.fetch_tracks.return_value = []
+
+    expanded = await service.expand_from_artists(
+        profile,
+        "token-123",
+        [_track("s1", "A", "Seed")],
+        ["Other Band"],
+        client=client,
+    )
+
+    assert any(track.id == "x1" for track in expanded)
+    yandex.init_client.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_collect_candidates_with_similar_tracks(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.services.retrieval_service.settings.target_candidates_pool", 0)
     monkeypatch.setattr("app.services.retrieval_service.settings.retrieval_expand_passes", 0)

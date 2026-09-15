@@ -195,7 +195,7 @@
 | 1.5 | Next.js UI (Device Flow + генерация) | ✅ |
 | 2–4 | LLM → retrieval → scoring | ✅ |
 | 5 | Export + FastAPI end-to-end | ✅ |
-| 5.5 | Качество: P0 полнота ✅; P1 хвост; P2 latency | ⚠️ |
+| 5.5 | Качество: P0/P1/P2 ✅ | ✅ |
 | 6 | История, реген, опции, UX, CI | ✅ |
 | 7 | Telegram, BPM, lyrics, AI-обложка, Celery | backlog |
 
@@ -206,16 +206,21 @@
 ## 8. Ближайшие доработки и backlog
 
 **Сейчас (этап 5.5):**
-- **P1 хвост:** embedding false positives, cap якорей — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md)
-- **P2 latency:** уложиться в 7–12 сек
+- **P1 хвост ✅:** `filter_by_top_median_gap` + cap якорей ~60% — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md)
+- **P2 latency ✅:** `rank_pool_merge` на feedback; `SCORING_EMBED_LIMIT=0`
+
+**Техдолг (после/параллельно с 5.5):** полный список — [DEVELOPMENT.md](DEVELOPMENT.md) § «Техдолг».
+- ✅ Regen/history восстанавливают `options`; `PIPELINE_TIMEOUT_SEC` enforced (504)
+- ✅ `exclude_artists` silent no-op → `warnings[]`
+- Осталось: дубль expand в retrieval; размер `quality.py` (приоритет C)
 
 **Этап 6 (продукт ✅):**
-- ✅ История генераций, «ещё вариант» (`source_id`), показ `MusicProfile`, опции, UX
+- ✅ История, «ещё вариант» (`source_id`), `MusicProfile`, опции, UX
 - ✅ CI + golden-промпты + vitest
 
-**Этап 7 (позже):**
+**Этап 7 (позже, после 5.5 + критичного техдолга):**
 - **Telegram-бот** (`aiogram`)
-- **BPM-анализ:** `librosa` на 30-сек превью, сортировка по нарастанию темпа
+- **BPM-анализ:** `librosa` на 30-сек превью, post-select reorder по флагу (не hot path)
 - **Анализ lyrics:** `tracks_lyrics` для фильтрации нежелательного контента
 - **AI-обложка:** Stable Diffusion / Flux → загрузка в плейлист
 - **Celery/Arq** — при latency ≫ бюджета или очереди

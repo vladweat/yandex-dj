@@ -149,39 +149,24 @@ class RetrievalService:
         *,
         used_seed_ids: set[str] | None = None,
         similar_seeds: int | None = None,
+        client: ClientAsync | None = None,
     ) -> list[TrackCandidate]:
         """Добор топов + similar по списку артистов (scoring feedback)."""
         if not artist_names:
             return candidates
 
-        client = await self._yandex.init_client(access_token)
+        yandex_client = client or await self._yandex.init_client(access_token)
         seed_ids = used_seed_ids if used_seed_ids is not None else set()
-        seen = {name.lower().strip() for name in artist_names if name.strip()}
-
-        tasks = [self._fetch_artist_tracks(client, name) for name in artist_names]
-        raw_tracks = await _gather_tracks(tasks)
-        tops = normalize_pool(tracks_to_candidates(raw_tracks))
-        merged = normalize_pool(candidates + tops)
-        added_tops = len(merged) - len(candidates)
-
-        merged = await self._expand_similar_for_artists(
-            client,
+        merged = await self._expand_by_artist_names(
+            yandex_client,
             profile,
-            merged,
-            artist_keys=seen,
+            candidates,
+            artist_names,
             used_seed_ids=seed_ids,
             similar_seeds=similar_seeds or settings.feedback_similar_seeds,
+            log_label="Feedback expand",
         )
-        added_total = len(merged) - len(candidates)
-        if added_total:
-            logger.info(
-                "Feedback expand: +%d tracks (%d tops) from %d artists (%s)",
-                added_total,
-                added_tops,
-                len(artist_names),
-                ", ".join(artist_names[:3]),
-            )
-        return await self._enrich_with_cache(client, merged)
+        return await self._enrich_with_cache(yandex_client, merged)
 
     @staticmethod
     def _clean_count(candidates: list[TrackCandidate], profile: MusicProfile) -> int:
@@ -285,29 +270,56 @@ class RetrievalService:
         for name in discovered:
             seen_artists.add(name.lower().strip())
 
-        tasks = [self._fetch_artist_tracks(client, name) for name in discovered]
+        return await self._expand_by_artist_names(
+            client,
+            profile,
+            candidates,
+            discovered,
+            used_seed_ids=used_seed_ids if used_seed_ids is not None else set(),
+            similar_seeds=similar_seeds or settings.discovered_similar_seeds,
+            log_label="Discovered expand",
+        )
+
+    async def _expand_by_artist_names(
+        self,
+        client: ClientAsync,
+        profile: MusicProfile,
+        candidates: list[TrackCandidate],
+        artist_names: list[str],
+        *,
+        used_seed_ids: set[str],
+        similar_seeds: int,
+        log_label: str,
+    ) -> list[TrackCandidate]:
+        """Общий путь: топы артистов → similar от их треков → merge в пул."""
+        names = [name.strip() for name in artist_names if name.strip()]
+        if not names:
+            return candidates
+
+        tasks = [self._fetch_artist_tracks(client, name) for name in names]
         raw_tracks = await _gather_tracks(tasks)
-        extra = normalize_pool(tracks_to_candidates(raw_tracks))
-        merged = normalize_pool(candidates + extra)
+        tops = normalize_pool(tracks_to_candidates(raw_tracks))
+        merged = normalize_pool(candidates + tops)
         added_tops = len(merged) - len(candidates)
 
-        artist_keys = {name.lower().strip() for name in discovered}
+        artist_keys = {name.lower() for name in names}
         merged = await self._expand_similar_for_artists(
             client,
             profile,
             merged,
             artist_keys=artist_keys,
-            used_seed_ids=used_seed_ids if used_seed_ids is not None else set(),
-            similar_seeds=similar_seeds or settings.discovered_similar_seeds,
+            used_seed_ids=used_seed_ids,
+            similar_seeds=similar_seeds,
         )
         added = len(merged) - len(candidates)
         if added:
             logger.info(
-                "Added %d tracks from %d discovered artists (%s)%s",
+                "%s: +%d tracks (%d tops) from %d artists (%s)",
+                log_label,
                 added,
-                len(discovered),
-                ", ".join(discovered[:3]),
-                f", tops={added_tops}" if added_tops else "",
+                added_tops,
+                len(names),
+                ", ".join(names[:3]),
             )
         return merged
 
