@@ -123,13 +123,130 @@ CLI: `prompt-dj llm parse "…"`. Конфиг: `OPENAI_API_KEY`, `OPENAI_BASE_U
 
 ---
 
+## Retrieval (Candidate Pool)
+
+### `POST /api/v1/retrieval/candidates`
+
+Сбор пула кандидатов из каталога Яндекс Музыки по `MusicProfile`.
+
+**Headers:** `Authorization: Bearer <session_id>`
+
+**Запрос:**
+```json
+{
+  "profile": { "...": "MusicProfile" },
+  "reference_track_id": "9442712"
+}
+```
+
+| Поле | Тип | Обязательно | По умолчанию |
+|------|-----|-------------|--------------|
+| `profile` | MusicProfile | да | — |
+| `reference_track_id` | string | нет | null |
+
+**Ответ `200`:**
+```json
+{
+  "count": 287,
+  "elapsed_ms": 3214,
+  "tracks": [
+    {
+      "id": "9442712",
+      "title": "Nightcall",
+      "artists": ["Kavinsky"],
+      "album": "OutRun",
+      "genre": "synthwave",
+      "version": "",
+      "duration_ms": 259000,
+      "available": true
+    }
+  ]
+}
+```
+
+**Ошибки:**
+- `401` — невалидная или истёкшая сессия
+- `503` — Яндекс API недоступен
+
+CLI: `prompt-dj retrieval fetch --prompt "…" --token "$YANDEX_OAUTH_TOKEN"`.
+
+---
+
+## Scoring (Ranking)
+
+### `POST /api/v1/scoring/rank`
+
+Ранжирование кандидатов: embeddings + diversity + fallback. Авторизация не требуется (кандидаты уже в теле запроса).
+
+**Запрос:**
+```json
+{
+  "profile": { "...": "MusicProfile" },
+  "candidates": [ { "id": "9442712", "title": "Nightcall", "artists": ["Kavinsky"] } ],
+  "prompt": "dark synthwave for night coding"
+}
+```
+
+| Поле | Тип | Обязательно | По умолчанию |
+|------|-----|-------------|--------------|
+| `profile` | MusicProfile | да | — |
+| `candidates` | TrackCandidate[] | да | min 1 |
+| `prompt` | string | нет | null — дополняет embedding query |
+
+**Ответ `200`:**
+```json
+{
+  "count": 25,
+  "elapsed_ms": 1842,
+  "method": "embedding",
+  "tracks": [
+    {
+      "id": "9442712",
+      "title": "Nightcall",
+      "artists": ["Kavinsky"],
+      "album": "OutRun",
+      "genre": "synthwave",
+      "duration_ms": 259000,
+      "score": 0.924
+    }
+  ]
+}
+```
+
+`method`: `"embedding"` | `"fallback"` (жанры + порядок retrieval, если модель недоступна).
+
+**Ошибки:**
+- `422` — пустой список кандидатов
+- `500` — внутренняя ошибка скоринга
+
+При недоступности модели сервис возвращает `200` с `"method": "fallback"` (жанры + reference artists).
+
+CLI: `prompt-dj scoring rank --prompt "…" --token "$YANDEX_OAUTH_TOKEN"` (полный пайплайн LLM → retrieval → scoring).
+
+---
+
 ## Playlists
 
 ### `POST /api/v1/playlists/generate`
 
-Генерация и экспорт плейлиста.
+Единственная точка входа end-to-end пайплайна: промпт → плейлист в аккаунте Яндекс Музыки.
 
-**Headers:** `Authorization: Bearer <session_id>`
+**Пайплайн (синхронный, один HTTP-запрос):**
+
+```
+prompt → LLM (MusicProfile) → retrieval (кандидаты) → scoring (топ-N) → export (Яндекс)
+```
+
+| Этап | Сервис | OAuth Яндекса | Типичное время |
+|------|--------|---------------|----------------|
+| LLM | `LLMService.parse_prompt` | нет | 2–3 сек |
+| Retrieval | `RetrievalService.collect_candidates` | да (из сессии) | 2–4 сек |
+| Scoring | `ScoringService.rank` | нет | 1–2 сек (после warmup) |
+| Export | `YandexMusicService.export_playlist` | да | 1–3 сек |
+
+**Целевая latency:** 7–12 сек (промпт → `playlist_url`). Промежуточные этапы в ответе **не** возвращаются.
+
+**Headers:** `Authorization: Bearer <session_id>` (обязательно; OAuth-токен Яндекса берётся из сессии на сервере)
 
 **Запрос:**
 ```json
@@ -140,17 +257,17 @@ CLI: `prompt-dj llm parse "…"`. Конфиг: `OPENAI_API_KEY`, `OPENAI_BASE_U
 }
 ```
 
-| Поле | Тип | Обязательно | По умолчанию |
-|------|-----|-------------|--------------|
-| `prompt` | string | да | — |
-| `track_count` | int | нет | 25 |
-| `instrumental_only` | bool | нет | false |
+| Поле | Тип | Обязательно | По умолчанию | Ограничения |
+|------|-----|-------------|--------------|-------------|
+| `prompt` | string | да | — | 1–2000 символов |
+| `track_count` | int | нет | 25 | 1–50 |
+| `instrumental_only` | bool | нет | `false` | передаётся в LLM как `vocal_type: instrumental_only` |
 
 **Ответ `200`:**
 ```json
 {
   "title": "Ночной Неон: Пустое Шоссе",
-  "description": "Атмосферный синтвейв и ретровейв для ночной дороги",
+  "description": "Атмосферный синтвейв и ретровейв для ночной дороги\n\nПромпт: Саундтрек для ночной поездки…",
   "playlist_url": "https://music.yandex.ru/users/username/playlists/1003",
   "tracks": [
     {
@@ -160,15 +277,164 @@ CLI: `prompt-dj llm parse "…"`. Конфиг: `OPENAI_API_KEY`, `OPENAI_BASE_U
       "duration_ms": 259000,
       "similarity_score": 0.89
     }
-  ]
+  ],
+  "pool_stats": {
+    "raw": 180,
+    "clean": 72,
+    "selected": 25
+  }
 }
 ```
 
+**Семантика полей ответа:**
+
+| Поле | Источник | Примечание |
+|------|----------|------------|
+| `title` | `MusicProfile.playlist_title` (LLM) | же название, что у плейлиста в Яндексе |
+| `description` | `playlist_description` + промпт | формат: `{описание}\n\nПромпт: {prompt}`; промпт не дублируется, если уже есть в описании |
+| `playlist_url` | export | `https://music.yandex.ru/users/{login}/playlists/{kind}`; `login` — из сессии |
+| `tracks` | scoring, в порядке релевантности | длина = `track_count` (или меньше при нехватке кандидатов) |
+| `tracks[].artist` | scoring | несколько исполнителей через `", "` |
+| `tracks[].similarity_score` | scoring | cosine similarity (embedding) или fallback-score; округление до 4 знаков |
+| `pool_stats` | retrieval + scoring | `raw` / `clean` (после pre-filter) / `selected`; диагностика полноты |
+
+**Export (что происходит в Яндексе):**
+
+1. `users_playlists_create(title=profile.playlist_title)`
+2. `users_playlists_insert_track(kind, track_id, album_id, at=i, revision=…)` — по одному, `revision` обновляется после каждой вставки
+3. `users_playlists_description(kind, description)` — описание из ответа API
+4. URL по `login` сессии и `kind` созданного плейлиста
+
+Подробности SDK: [YANDEX_MUSIC.md](YANDEX_MUSIC.md) § «Экспорт плейлиста».
+
+**Scoring внутри пайплайна:** при недоступности embedding-модели используется fallback (жанры + reference artists), но запрос всё равно завершается `200`, если export успешен. Поле `method` в ответ **не** включается (оно есть только у `POST /scoring/rank`).
+
+**Логи сервера (latency по этапам):**
+
+```
+Playlist pipeline: llm=2140ms retrieval=3214ms scoring=1842ms export=1520ms total=8716ms tracks=25 method=embedding
+```
+
+`method`: `embedding` | `fallback`. Смотреть: `docker compose logs -f api` или `make logs`.
+
 **Ошибки:**
-- `401` — невалидная или истёкшая сессия
-- `422` — пустой или слишком длинный промпт
-- `502` — ошибка API Яндекс Музыки после retry
-- `503` — LLM или embedding model недоступны
+
+| Код | Когда | `detail` (пример) |
+|-----|-------|-------------------|
+| `401` | нет/невалидный Bearer, истёкшая сессия | `Invalid or expired session` |
+| `422` | пустой промпт, `track_count` вне 1–50, промпт > 2000 символов | Pydantic validation |
+| `500` | scoring вернул 0 треков или внутренняя ошибка ранжирования | `Scoring returned no tracks` |
+| `502` | Яндекс API недоступен после retry, ошибка export (создание/вставка/описание) | текст исключения |
+| `503` | LLM недоступен (`OPENAI_API_KEY`), retrieval без кандидатов, сбой retrieval | `OPENAI_API_KEY is not configured`, `No candidates found for the prompt` |
+
+**Пример (curl):**
+
+```bash
+curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
+  -H "Authorization: Bearer $SESSION_ID" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "dark synthwave for night coding", "track_count": 25}'
+```
+
+`SESSION_ID` — из `POST /auth/device-flow/poll` (`session_id` в ответе) или `GET /auth/me`.
+
+**Отладка по этапам (без export):** отдельные эндпоинты `POST /llm/parse`, `POST /retrieval/candidates`, `POST /scoring/rank` или CLI `prompt-dj scoring rank --prompt "…" --token "$YANDEX_OAUTH_TOKEN"`.
+
+---
+
+## Yandex Music API (SDK)
+
+Все вызовы — через `ClientAsync` ([yandex-music-api](https://github.com/MarshalX/yandex-music-api) v3+), обёртка `YandexMusicService` (`backend/app/services/yandex_music_service.py`). OAuth-токен пользователя хранится в сессии (Fernet), в браузер не отдаётся.
+
+**Поведение обёртки (для всех методов ниже):**
+
+| Параметр | Значение по умолчанию | Env |
+|----------|----------------------|-----|
+| Пауза между запросами | 150 ms | `YANDEX_RATE_LIMIT_DELAY_SEC` |
+| Retry при сетевых ошибках | 3 попытки, exponential backoff | `YANDEX_API_MAX_RETRIES` |
+| Прокси | `HTTPS_PROXY` / `HTTP_PROXY` | см. `.env.example` |
+| Исключения | `YandexMusicError` → HTTP `502`/`503` | — |
+
+### Auth — OAuth Device Flow
+
+| Метод SDK (`ClientAsync`) | Обёртка | Наш REST | Назначение |
+|---------------------------|---------|----------|------------|
+| `request_device_code()` | `request_device_code` | `POST /auth/device-flow/start` | Код для пользователя |
+| `poll_device_token(device_code)` | `poll_device_token` | `POST /auth/device-flow/poll` | Опрос до `access_token` |
+| `device_auth(on_code, timeout)` | `device_auth` | CLI `auth login` | Обёртка start + poll |
+| `init()` | `init_client(token)` | — (внутри retrieval/export) | Инициализация клиента с токеном |
+| `account_status()` | `get_account_status` | `GET /yandex/account`, `GET /auth/me` | `uid`, `login` для сессии и URL |
+
+**Ответ `request_device_code` → наш `DeviceFlowStartResponse`:**
+
+| Поле SDK | Поле REST |
+|----------|-----------|
+| `device_code` | `device_code` |
+| `user_code` | `user_code` |
+| `verification_url` | `verification_url` |
+| `expires_in` | `expires_in` |
+| `interval` | `interval` |
+
+Таймаут poll: 120 сек (`DEVICE_FLOW_TIMEOUT_SEC`).
+
+### Retrieval — сбор кандидатов
+
+Вызывается из `RetrievalService.collect_candidates` (`POST /retrieval/candidates`, этап retrieval в `/playlists/generate`). Запросы по `MusicProfile` — **параллельно** (`asyncio.gather`).
+
+| Метод SDK | Обёртка | Источник данных | Лимиты (defaults) |
+|-----------|---------|-----------------|-------------------|
+| `search(query, type_="track", page=N)` | `search_tracks` | `profile.search_queries` (+ expand) | 50 треков × 2 страницы на запрос |
+| `search(name, type_="artist")` | `search_artist_id` | `profile.reference_artists` | первый результат |
+| `artists_tracks(artist_id, page=0, page_size=N)` | `artists_top_tracks` | после `search_artist_id` | 10 треков на артиста |
+| `tracks_similar(track_id)` | `tracks_similar_list` | `reference_track_id` (опционально) | все similar |
+| `tracks(track_ids)` | `fetch_tracks` | обогащение кэша (album, genre, `available`) | batch по missing ids |
+
+**Нормализация пула:** дедуп по `id` и `artist|title`, пропуск `available=False`. Цель: 150–300 кандидатов (`TARGET_CANDIDATES_POOL`, `MAX_CANDIDATES`).
+
+**Кэш:** Redis, ключи по `track_id`, TTL 24h (`TRACK_CACHE_TTL_SEC`) — метод `tracks()` не дергается повторно для известных id.
+
+### Export — создание плейлиста
+
+Вызывается из `YandexMusicService.export_playlist` (этап export в `/playlists/generate`). Порядок **строгий**:
+
+| # | Метод SDK | Сигнатура (ключевые аргументы) | Что передаём |
+|---|-----------|-------------------------------|--------------|
+| 1 | `users_playlists_create` | `(title, visibility="public")` | `profile.playlist_title` |
+| 2 | `tracks` | `(track_ids)` | resolve `album_id` для каждого ranked track |
+| 3 | `users_playlists_insert_track` | `(kind, track_id, album_id, at=i, revision=rev)` | по одному треку; `revision` из ответа предыдущей вставки |
+| 4 | `users_playlists_description` | `(kind, description)` | `{playlist_description}\n\nПромпт: …` |
+| — | URL (не SDK) | — | `https://music.yandex.ru/users/{login}/playlists/{kind}` |
+
+**Важно для `insert_track`:** обязателен `album_id` (из `track.albums[0].id`). Треки без `album_id` пропускаются; если не осталось ни одного — `502` (`No tracks available for export`).
+
+**Пример последовательности (псевдокод):**
+
+```python
+playlist = await client.users_playlists_create(title="Ночной неон")
+# playlist.kind == 1003, playlist.revision == 1
+
+for i, (track_id, album_id) in enumerate(refs):
+    playlist = await client.users_playlists_insert_track(
+        playlist.kind, track_id, album_id, at=i, revision=playlist.revision
+    )
+    # playlist.revision увеличивается на 1 после каждой вставки
+
+await client.users_playlists_description(playlist.kind, description)
+url = f"https://music.yandex.ru/users/{login}/playlists/{playlist.kind}"
+```
+
+### Сводка: какой REST → какие вызовы Яндекса
+
+| Наш endpoint | Методы SDK (типичный набор) |
+|--------------|----------------------------|
+| `POST /auth/device-flow/start` | `request_device_code` |
+| `POST /auth/device-flow/poll` | `poll_device_token`, `init`, `account_status` |
+| `GET /auth/me` | — (данные из БД; токен не раскрывается) |
+| `GET /yandex/account` | `init`, `account_status` |
+| `POST /retrieval/candidates` | `init`, `search`×N, `artists_tracks`×4, `tracks_similar`?, `tracks` |
+| `POST /playlists/generate` | всё из retrieval + export (`users_playlists_*`, `tracks`) |
+
+Полная документация SDK, паспорт трека, нормализация: [YANDEX_MUSIC.md](YANDEX_MUSIC.md).
 
 ---
 

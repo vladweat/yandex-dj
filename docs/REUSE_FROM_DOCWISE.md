@@ -62,7 +62,7 @@ Docwise сам портировал каркас из ChainWise; для Prompt D
 3. `features/auth/*` + `/login`.
 4. `AppHeader`, gates, `/` с заглушкой генерации.
 5. `docker-compose` + Makefile; удалить `backend/app/static/auth-test.html` и `GET /test/auth`.
-6. После `POST /playlists/generate` ≠ 501 — `features/playlist/*`.
+6. После `POST /playlists/generate` ≠ 501 — `features/playlist/*` (форма + таблица + `pool_stats`; без заглушки «Скоро»).
 
 ## Ссылки
 

@@ -434,9 +434,7 @@ def scoring_rank(
         raise click.UsageError("Укажите --prompt или --profile-json")
     if candidates_json is None and token is None and prompt is None:
         raise click.UsageError("Укажите --candidates-json или --token/--prompt для retrieval")
-    asyncio.run(
-        _scoring_rank(prompt, profile_json, candidates_json, token, reference_track_id)
-    )
+    asyncio.run(_scoring_rank(prompt, profile_json, candidates_json, token, reference_track_id))
 
 
 async def _scoring_rank(

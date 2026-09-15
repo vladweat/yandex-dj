@@ -3,7 +3,7 @@
 ## Запуск
 
 ```bash
-make up              # api + db в Docker
+make up              # api + db + redis в Docker
 make migrate         # alembic в контейнере (как docwise)
 make test            # pytest в контейнере
 
@@ -18,18 +18,34 @@ make auth-poll   # = docker compose exec api python -m app.cli.main auth poll
 - Swagger: http://localhost:8000/docs
 - Health: http://localhost:8000/api/v1/health
 
+## CLI (отладка пайплайна)
+
+```bash
+# LLM
+prompt-dj llm parse "dark synthwave for night coding"
+
+# Retrieval (нужен YANDEX_OAUTH_TOKEN)
+prompt-dj retrieval fetch --prompt "dark synthwave" --token "$YANDEX_OAUTH_TOKEN"
+
+# Scoring (LLM → retrieval → rank)
+prompt-dj scoring rank --prompt "dark synthwave for night coding" --token "$YANDEX_OAUTH_TOKEN"
+```
+
+Контракты HTTP: [docs/API.md](../docs/API.md).
+
 ## Структура
 
 ```
 app/
-├── main.py                 # точка входа FastAPI
+├── main.py                 # точка входа FastAPI (+ warmup embeddings)
 ├── api/
 │   ├── deps.py             # Depends: db, services
 │   └── v1/
 │       ├── router.py
-│       └── endpoints/      # health, auth, playlists
+│       └── endpoints/      # health, auth, llm, retrieval, scoring, playlists
 ├── core/
 │   ├── config.py           # Settings
+│   ├── embedding.py        # sentence-transformers loader
 │   ├── security.py         # Fernet
 │   └── exceptions.py
 ├── db/
@@ -38,6 +54,7 @@ app/
 ├── schemas/                # Pydantic request/response
 ├── repositories/           # доступ к БД
 ├── services/               # бизнес-логика
+├── utils/                  # tracks, scoring, search_queries
 └── cli/                    # click (отладка)
 ```
 
@@ -65,8 +82,10 @@ ruff check app tests
 ## Docker (offline)
 
 ```bash
-# online — Python 3.12 на хосте
-make venv
+# online — Python 3.12 на хосте; для scoring нужен [ml]:
+pip install -e ".[ml,dev]"
+
+make venv          # venv + модель e5-base + libgomp
 
 # offline
 make build && make up

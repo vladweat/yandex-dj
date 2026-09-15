@@ -35,10 +35,6 @@ def get_yandex_account_service(
     return YandexAccountService(yandex)
 
 
-def get_playlist_service() -> PlaylistService:
-    return PlaylistService()
-
-
 def get_llm_service() -> LLMService:
     return LLMService()
 
@@ -59,6 +55,15 @@ def get_retrieval_service(
 
 def get_scoring_service() -> ScoringService:
     return ScoringService()
+
+
+def get_playlist_service(
+    llm: LLMService = Depends(get_llm_service),
+    retrieval: RetrievalService = Depends(get_retrieval_service),
+    scoring: ScoringService = Depends(get_scoring_service),
+    yandex: YandexMusicService = Depends(get_yandex_music_service),
+) -> PlaylistService:
+    return PlaylistService(llm=llm, retrieval=retrieval, scoring=scoring, yandex=yandex)
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:

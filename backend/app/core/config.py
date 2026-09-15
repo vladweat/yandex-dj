@@ -28,12 +28,22 @@ class Settings(BaseSettings):
     max_tracks_per_artist: int = 2
     pipeline_timeout_sec: int = 12
     track_cache_ttl_sec: int = 86400
-    artist_tracks_limit: int = 10
+    artist_tracks_limit: int = 20
     search_tracks_per_query: int = 50
     search_pages: int = 2
     search_expand_max_queries: int = 12
-    retrieval_expand_passes: int = 2
-    scoring_embed_limit: int = 80
+    retrieval_expand_passes: int = 4
+    min_clean_candidates: int = 50
+    similar_seeds_per_artist: int = 3
+    max_similar_requests: int = 12
+    # Не-якорные артисты из clean-пула → их топы + similar (ширина пула)
+    discovered_artists_limit: int = 12
+    discovered_similar_seeds: int = 8
+    # После первого scoring — добор по лучшим не-якорным
+    feedback_artists_limit: int = 8
+    feedback_similar_seeds: int = 8
+    # 0 = embed весь пул кандидатов (до max_candidates)
+    scoring_embed_limit: int = 0
     embedding_batch_size: int = 64
     embedding_torch_threads: int = 0  # 0 = все доступные CPU-потоки
 

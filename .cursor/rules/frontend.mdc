@@ -23,7 +23,7 @@ alwaysApply: false
 
 ## Main screen
 
-- `/`: форма промпта → `POST /playlists/generate` → ссылка на плейлист + список треков.
-- `401` → `/login`. Ошибки — toast, не ломать layout.
+- `/`: форма промпта (+ примеры) → `POST /playlists/generate` → ссылка, `pool_stats`, таблица треков со `similarity_score`.
+- `401` → сброс сессии → `/login`. Ошибки — toast, не ломать layout.
 
 Prefer shadcn primitives over custom CSS. See [docs/FRONTEND.md](../../docs/FRONTEND.md).

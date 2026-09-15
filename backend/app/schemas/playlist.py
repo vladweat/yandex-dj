@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class PlaylistGenerateRequest(BaseModel):
-    prompt: str = Field(min_length=1)
+    prompt: str = Field(min_length=1, max_length=2000)
     track_count: int = Field(default=25, ge=1, le=50)
     instrumental_only: bool = False
 
@@ -15,8 +15,15 @@ class PlaylistTrackResponse(BaseModel):
     similarity_score: float
 
 
+class PlaylistPoolStats(BaseModel):
+    raw: int
+    clean: int
+    selected: int
+
+
 class PlaylistGenerateResponse(BaseModel):
     title: str
     description: str
     playlist_url: str
     tracks: list[PlaylistTrackResponse]
+    pool_stats: PlaylistPoolStats | None = None

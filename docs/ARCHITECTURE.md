@@ -85,17 +85,20 @@
 
 ## Этап 3: Scoring & Ranking
 
-**Паспорт трека:**
+**Паспорт трека (SPEC §4.4):**
 ```
 Название: {title}. Исполнитель: {artists}. Альбом: {album}. Жанр: {genre}. Версия: {version}
 ```
 
+Для embedding используется компактная форма `embedding_passport()` — `{title}. {artists}. {genre}` (меньше токенов, быстрее encode).
+
 **Алгоритм:**
-1. Batch-эмбеддинг промпта и паспортов (`sentence-transformers`)
-2. Cosine similarity (`numpy`)
-3. Сортировка по убыванию score
-4. Diversity filtering (см. ниже)
-5. Топ-N
+1. Pre-filter: fallback-ранжирование → top `scoring_embed_limit` (80) для batch-embed
+2. Batch-эмбеддинг query + паспортов (`sentence-transformers`, E5-префиксы `query:` / `passage:`)
+3. Cosine similarity (`numpy`), boost reference artists (+8%)
+4. Merge с fallback-хвостом остальных кандидатов (чтобы diversity набрал target_track_count)
+5. Diversity filtering → топ-N
+6. Warmup модели при старте API (`lifespan`)
 
 **Diversity:**
 | Размер плейлиста | Max треков на артиста |
@@ -103,7 +106,7 @@
 | ≤25 | 2 |
 | 26–50 | 3 |
 
-**Fallback** (embeddings недоступны): совпадение `primary_genres` + популярность трека.
+**Fallback** (embeddings недоступны): совпадение `primary_genres` + reference artists + порядок retrieval как прокси популярности.
 
 **Модель:** `intfloat/multilingual-e5-base` (см. [STACK.md](STACK.md)).
 
@@ -166,6 +169,7 @@ DATABASE_URL=postgresql+asyncpg://prompt_dj:prompt_dj@localhost/prompt_dj
 OPENAI_API_KEY=
 LLM_MODEL=gpt-4o-mini
 EMBEDDING_MODEL=intfloat/multilingual-e5-base
+SCORING_EMBED_LIMIT=80
 TOKEN_ENCRYPTION_KEY=
 ```
 

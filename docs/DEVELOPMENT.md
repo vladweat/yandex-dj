@@ -8,13 +8,14 @@
 |---------|-----------|
 | Документация | ✅ SPEC, STACK, ARCHITECTURE, API, LLM_SCHEMA |
 | Окружение | ✅ `make venv` — venv + модель e5-base + libgomp |
-| Docker | ✅ `prompt-dj-api` + `prompt-dj-db` (PostgreSQL 15) |
+| Docker | ✅ `prompt-dj-api` + `prompt-dj-db` (PostgreSQL 15) + Redis 7 |
 | FastAPI | ✅ `/api/v1/health` → `200 ok` |
-| Auth / Playlists | ✅ Auth реализован; Playlists — `501` |
+| Auth / Playlists | ✅ Auth + `POST /playlists/generate` (end-to-end) |
 | Frontend | ⏳ каркас из docwise — [FRONTEND.md](FRONTEND.md); временно `GET /test/auth` |
-| Пайплайн (LLM → export) | ⏳ retrieval + scoring готовы; export — заглушка |
+| Пайплайн (LLM → export) | ✅ LLM → retrieval → scoring → export |
+| Качество плейлистов | ⚠️ топ хороший, **18–19/25** на mood-only промптах — см. [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) |
 
-**Следующий шаг:** скелет `frontend/` (docwise); параллельно — Этап 2 (LLM Engine).
+**Следующий шаг:** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) § «Открытые задачи» (P0: clean-пул ≥50), затем этап 6 backlog.
 
 ---
 
@@ -24,7 +25,7 @@
 
 - [x] Структура `backend/app/` (api, core, services, schemas, repositories, db, cli)
 - [x] `backend/pyproject.toml`: зависимости из [STACK.md](STACK.md)
-- [x] `docker-compose.yml`: PostgreSQL 15 + API
+- [x] `docker-compose.yml`: PostgreSQL 15 + Redis 7 + API
 - [x] `Dockerfile`: offline-сборка (venv → site-packages, модель, libgomp)
 - [x] `Makefile`: `venv`, `build`, `up`, `down`, `pack`
 - [x] Скрипты: `build-venv.sh`, `verify-venv.sh`, `pack-offline-bundle.sh`, `prepare_embeddings.py`
@@ -33,7 +34,7 @@
 - [x] Alembic каркас (`env.py`) — **миграций пока нет**
 - [x] Fernet: `encrypt_token` / `decrypt_token` (`core/security.py`)
 - [x] Pydantic-схемы: `MusicProfile`, auth, playlist, health
-- [x] Роутеры: health, auth, playlists (`api/v1/router.py`)
+- [x] Роутеры: health, auth, llm, retrieval, scoring, playlists (`api/v1/router.py`)
 - [x] `/api/v1/health` — работает
 - [x] Embedding-модель `intfloat/multilingual-e5-base` скачана в `backend/.models/`
 - [x] Docker-стек: `make build && make up`
@@ -128,6 +129,17 @@ make migrate && make auth-poll
 
 **Проверка:** пул 150+ треков за < 4 сек.
 
+```bash
+# API (нужна сессия)
+curl -X POST localhost:8000/api/v1/retrieval/candidates \
+  -H "Authorization: Bearer $SESSION_ID" \
+  -H "Content-Type: application/json" \
+  -d '{"profile": {...}}'
+
+# CLI
+prompt-dj retrieval fetch --prompt "dark synthwave" --token "$YANDEX_OAUTH_TOKEN"
+```
+
 ---
 
 ## Этап 4. Scoring Module
@@ -141,7 +153,12 @@ make migrate && make auth-poll
 - [x] Diversity: 2 трека/артист (N≤25), 3 (N 26–50)
 - [x] Fallback: жанры + популярность
 
-**Проверка:** 25 релевантных треков; скоринг < 2 сек.
+**Проверка:** 25 релевантных треков; скоринг **< 2 сек** после warmup модели (API прогревает при старте). Первый CLI-запуск: ~15 с load + ~12 с encode на CPU — норма для cold start.
+
+```bash
+prompt-dj scoring rank --prompt "dark synthwave for night coding" --token "$YANDEX_OAUTH_TOKEN"
+# Ожидаем: ranked: 25, method: embedding, reference artists в топе
+```
 
 ---
 
@@ -149,12 +166,43 @@ make migrate && make auth-poll
 
 **Цель:** полный пайплайн через FastAPI.
 
-- [ ] `PlaylistService.generate()` — LLM → retrieval → scoring → export
-- [ ] `POST /api/v1/playlists/generate` ([API.md](API.md)) — сейчас `501`
-- [ ] Экспорт: `users_playlists_create` + `insert_track` + description + URL
-- [ ] Метрики latency по этапам в логах
+- [x] `PlaylistService.generate()` — LLM → retrieval → scoring → export
+- [x] `POST /api/v1/playlists/generate` ([API.md](API.md))
+- [x] Экспорт: `users_playlists_create` + `insert_track` + description + URL
+- [x] Метрики latency по этапам в логах
 
 **Проверка:** промпт через API → ссылка на плейлист за 7–12 сек.
+
+```bash
+# session_id — из Device Flow (make auth-poll) или GET /api/v1/auth/me
+curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
+  -H "Authorization: Bearer $SESSION_ID" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "dark synthwave for night coding", "track_count": 25}'
+# Ожидаем: 200, playlist_url, tracks[].similarity_score; в логах api — Playlist pipeline: llm=…ms …
+```
+
+Контракт, коды ошибок и семантика полей: [API.md](API.md) § Playlists.  
+Методы SDK Яндекса (auth, retrieval, export): [API.md](API.md) § Yandex Music API, детали — [YANDEX_MUSIC.md](YANDEX_MUSIC.md).
+
+---
+
+## Этап 5.5. Качество плейлистов
+
+**Цель:** стабильно **25 релевантных** треков на промптах без артистов (kitchen, coding, …).
+
+- [x] Универсальный SEO pre-filter (`quality.py`)
+- [x] Embedding без `reference_artists` в query + anchor boost
+- [x] Adaptive elbow + fill + sort (tail без raise до `score[N-1]`)
+- [x] Retrieval: similar seeds, frequency-rank discovered + similar, `min_clean_candidates`
+- [x] Scoring feedback при `selected < N`; `pool_stats` в ответе
+- [x] **P0:** kitchen curl/UI → `tracks.length == 25`, `clean ≥ 40`
+- [x] Frontend: генерация без заглушки «Скоро», таблица + `pool_stats`
+- [ ] **P1:** хвост без embedding-мусора (Hauvy и т.п.)
+- [ ] **P2:** latency budget 7–12 сек (`SCORING_EMBED_LIMIT` / меньше double-embed)
+
+**Handoff для агента:** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — не добавлять regex под промпт.  
+**UI-тест:** [FRONTEND.md](FRONTEND.md) § «Ручной тест UI».
 
 ---
 
@@ -172,7 +220,7 @@ make migrate && make auth-poll
 | Инструмент | Статус |
 |------------|--------|
 | `ruff` | ✅ в `pyproject.toml` |
-| `pytest` | ✅ auth + health; dev — `pip install ".[dev]"` |
+| `pytest` | ✅ auth, health, llm, retrieval, scoring |
 | `vitest` / `tsc` | ⏳ после `frontend/` |
 | CI (`.github/`) | ❌ не настроен |
 

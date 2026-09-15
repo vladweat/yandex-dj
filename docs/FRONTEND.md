@@ -35,19 +35,30 @@ Prompt DJ: **Bearer `session_id`** (UUID из Device Flow).
 Одна колонка (без split-pane docwise):
 
 1. **Форма:** текстовый промпт, `track_count` (по умолчанию 25), `instrumental_only`.
-2. **Submit:** `POST /api/v1/playlists/generate` с Bearer.
-3. **Состояния:** idle → loading (7–12 сек, спиннер + этап при появлении async API) → success | error.
-4. **Результат:** `title`, `description`, кнопка «Открыть в Яндекс Музыке» (`playlist_url`), таблица треков (`title`, `artist`, `similarity_score`).
+2. **Быстрые примеры:** кнопки под textarea (kitchen / coding / synthwave) — для ручного регресса качества.
+3. **Submit:** `POST /api/v1/playlists/generate` с Bearer; при `401` — сброс сессии → `/login`.
+4. **Состояния:** idle → loading («Генерируем… (обычно 7–20 сек)») → success | error.
+5. **Результат:** `title`, `description`, кнопка «Открыть в Яндекс Музыке», badges `raw/clean/selected` (`pool_stats`), таблица треков (`#`, `title`, `artist`, duration, `similarity_score`).
 
 Ошибки — тост/баннер, без разрыва страницы:
 
 | Код | UX |
 | --- | --- |
-| `401` | Редирект на `/login` |
-| `422` | Валидация промпта под полем |
-| `502` / `503` | Тост «Сервис временно недоступен» |
+| `401` | Сброс `session_id`, тост, редирект на `/login` |
+| `422` | Валидация промпта под полем (1–2000 символов, `track_count` 1–50) |
+| `500` / `502` / `503` | Тост «Сервис временно недоступен» |
 
-Пока `POST /playlists/generate` возвращает `501` — показывать заглушку «Скоро» или скрыть кнопку генерации.
+Полный контракт `POST /playlists/generate`: [API.md](API.md) § Playlists.  
+Критерии качества (kitchen prompt): [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md).
+
+### Ручной тест UI
+
+```bash
+make up-frontend   # http://localhost:3001
+# 1) /login → Device Flow
+# 2) / → пример «под настроение пока варю макароны»
+# 3) Ожидание: 25 треков, clean badge ≥ 40, ссылка на Яндекс Музыку
+```
 
 ## Shell
 

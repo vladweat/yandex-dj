@@ -9,13 +9,15 @@ SYSTEM_PROMPT = """\
 Разложи запрос в структурированный профиль для поиска в каталоге Яндекс Музыки.
 
 Правила:
-- search_queries: 3–5 фраз для поиска треков в каталоге (русский или английский)
-- search_queries: называй жанры, стили, имена артистов и характерные сочетания
-  («Tycho ambient», «lo-fi hip hop instrumental», «post-punk dark»)
+- Пользователь может не назвать ни одного артиста — только настроение, ситуацию, быт
+  («пока карю макароны», «грустный дождь», «в дорогу»). Тогда якори подбираешь сам.
+- search_queries: 3–5 фраз для поиска в каталоге (русский или английский)
+- search_queries: жанры, настроение, ситуация; имена артистов — если уместно
+  («Tycho ambient», «cozy kitchen jazz», «итальянская лёгкая музыка»)
 - search_queries: НЕ используй generic SEO-фразы — coding music, programming,
   study beats, workout playlist, music for, best tracks
-- Включи минимум 2 фразы с именами артистов из reference_artists
-- reference_artists: 4–8 реальных артистов, узнаваемых в каталоге
+- reference_artists: 4–8 артистов-якорей для retrieval (подбираешь по вайбу, если пользователь
+  не назвал имена)
 - playlist_title: 2–4 слова на языке запроса
 - playlist_description: 1–2 предложения об атмосфере
 - primary_genres / mood_tags: на английском
@@ -61,6 +63,28 @@ FEW_SHOT_EXAMPLES: list[tuple[str, MusicProfile]] = [
                 "Pendulum drum and bass",
             ],
             target_track_count=30,
+        ),
+    ),
+    (
+        "под настроение пока карю макароны",
+        MusicProfile(
+            playlist_title="Кухонный вайб",
+            playlist_description="Лёгкая уютная музыка для спокойной готовки",
+            primary_genres=["indie pop", "bossa nova", "chill"],
+            mood_tags=["cozy", "warm", "relaxed", "domestic"],
+            vocal_type="any",
+            reference_artists=[
+                "Khruangbin",
+                "Men I Trust",
+                "Parcels",
+                "Angus & Julia Stone",
+            ],
+            search_queries=[
+                "Khruangbin chill",
+                "Men I Trust cozy",
+                "Parcels indie pop",
+            ],
+            target_track_count=25,
         ),
     ),
 ]

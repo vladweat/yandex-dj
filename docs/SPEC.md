@@ -103,13 +103,16 @@
 
 ### 4.3. Сбор кандидатов
 
-Пул **150–300** треков:
+Пул **150–300** raw, цель **≥50 clean** после pre-filter — см. [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md).
 
 | Источник | Метод | Объём |
 |----------|-------|-------|
 | Полнотекстовый поиск | `client.search` | по `search_queries` |
-| Артисты-референсы | `client.artists_tracks` | топ-10 на артиста |
-| Похожие треки | `client.tracks_similar` | если указан референс |
+| Артисты-референсы | `client.artists_tracks` | топ-20 на артиста |
+| Похожие треки | `client.tracks_similar` | seeds от якорей (до 12 вызовов) |
+| Discovered artists | `artists_tracks` + `tracks_similar` | frequency-rank не-якорных → топы + similar |
+| Scoring feedback | tops + similar | если selected < N — лучшие не-якорные из ranked pool |
+| Expand passes | `expand_search_queries` | до 4 проходов при малом пуле |
 
 **Нормализация:**
 - Дедупликация по `track.id`
@@ -131,9 +134,24 @@
 **Diversity Filtering:**
 - ≤25 треков → max **2** трека на артиста
 - 26–50 треков → max **3** трека на артиста
-- Топ-N по умолчанию N=25
+- Лимит считается по **всем** исполнителям в `artists[]` (не только первому)
+- Дедуп по нормализованному названию трека
+- Топ-N по умолчанию N=25; допустимо меньше при нехватке релевантных кандидатов
 
-**Fallback:** при недоступности эмбеддингов — ранжирование по жанрам + популярности.
+**Промпт без артистов:** пользователь может описать только настроение или ситуацию («пока карю макароны»). LLM сам подберёт `reference_artists` и `search_queries` для retrieval; embedding-запрос строится из **исходного промпта** + описания/жанров/настроения, без списка артистов.
+
+**Принцип отбора (универсальный, без хардкода жанров):**
+1. **Pre-filter** — объективный мусор каталога: аранжировки/каверы, compilation-artist (`саундтрек`, `Soundtrack & Theme Orchestra`), SEO-шаблоны (`… - Vibe for …`, genre-as-title `Upbeat Indie Pop`, лейблы `Vinyl Sounds` / `MoodMode`), reference artist в title без исполнителя
+2. **Embedding** — весь пул кандидатов (`SCORING_EMBED_LIMIT=0`); cosine similarity к промпту пользователя и атмосфере
+3. **Reference anchor boost** — +0.03 к score треков якорных артистов из retrieval (в embedding-запрос не входят)
+4. **Adaptive cutoff** — порог по наибольшему разрыву score (elbow) в ранжированном списке
+5. **Diversity** — max 2/3 трека на исполнителя; для якорных `reference_artists` — до **3** (tail fill до **5**)
+6. **Fill** — три фазы (strict elbow → soft score[N−1] → tail last−0.04); финальная сортировка по score
+   - Tail **не** поднимает пол до score[N−1]: иначе при концентрации якорей в топе недобор (19/25 при clean≫N)
+
+Релевантность промпту определяет **модель**, не regex. Допустимо < N треков, если **clean-пул** после pre-filter меньше N (текущая проблема — см. [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md)).
+
+**Fallback:** при недоступности эмбеддингов — ранжирование по жанрам + reference artists.
 
 ### 4.5. Экспорт
 
@@ -186,6 +204,7 @@
 
 ## 8. Backlog (будущее)
 
+- **Качество плейлистов (хвост / latency):** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — P1 false positives, P2 latency; полнота N закрыта
 - **BPM-анализ:** `librosa` на 30-сек превью, сортировка по нарастанию темпа
 - **AI-обложка:** Stable Diffusion / Flux → загрузка в плейлист
 - **Анализ lyrics:** `tracks_lyrics` для фильтрации нежелательного контента
