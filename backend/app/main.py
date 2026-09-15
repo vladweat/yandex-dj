@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,11 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.embedding import warmup_embedding_model
 from app.db.session import engine
+
+# uvicorn по умолчанию не поднимает INFO у app.* — без этого нет диагностики retrieval
+logging.getLogger("app").setLevel(logging.INFO)
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
 
 @asynccontextmanager

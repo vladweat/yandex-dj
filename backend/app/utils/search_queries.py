@@ -5,19 +5,27 @@ import re
 from app.core.config import settings
 from app.schemas.llm import MusicProfile
 
+# Структурные SEO-фразы (не список контекстов вроде cooking/sleep).
 _GENERIC_PATTERNS = re.compile(
-    r"\b("
-    r"coding|programming|developer|code|"
-    r"study\s+(music|beats)|focus\s+music|"
-    r"workout(\s+playlist|\s+music)?|gym\s+music|running\s+playlist|cardio|"
-    r"best\s+tracks|music\s+for|playlist"
-    r")\b",
+    r"("
+    r"\b(coding|programming|developer|code)\b|"
+    r"\b(study|focus|workout|gym|running|cardio|meditation|yoga|relaxation)\s+"
+    r"(music|beats?|playlist)\b|"
+    r"\b(music|vibe|vibes|sound|sounds|audio|ambience|ambient|beats?|bgm)\s+for\b|"
+    r"\bfor\s+(cooking|kitchen|sleep|study|work|focus|relax|meditation|yoga|"
+    r"workout|gym|restaurants?|coffee|driving|reading)\b|"
+    r"\bbest\s+tracks\b|"
+    r"\b\w+\s+music\s+(playlist|moods?)\b|"
+    r"\bplaylist\b|"
+    r"\b(bossa\s+nova|lo-?fi|jazz|chill|ambient|electronic|classical|piano|synth)\s+"
+    r"(cooking|cleaning|sleeping|studying|working|driving|reading|meditation|workout)\b"
+    r")",
     re.IGNORECASE,
 )
 
 
 def is_generic_search_query(query: str) -> bool:
-    """SEO-фразы вроде «coding music» плохо работают в каталоге."""
+    """SEO-фразы вроде «coding music» / «vibe for sleep» плохо работают в каталоге."""
     return bool(_GENERIC_PATTERNS.search(query.strip()))
 
 

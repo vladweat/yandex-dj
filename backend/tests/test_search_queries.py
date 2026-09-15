@@ -26,8 +26,13 @@ def _profile() -> MusicProfile:
 def test_is_generic_search_query() -> None:
     assert is_generic_search_query("lo-fi coding music")
     assert is_generic_search_query("workout playlist upbeat")
+    assert is_generic_search_query("bossa nova cooking")
+    assert is_generic_search_query("vibe for sleep")
+    assert is_generic_search_query("music for studying")
+    assert is_generic_search_query("lo-fi studying")
     assert not is_generic_search_query("Tycho ambient instrumental")
     assert not is_generic_search_query("Nujabes chillhop")
+    assert not is_generic_search_query("cozy kitchen indie")
 
 
 def test_refine_search_queries_removes_generic_and_adds_artists() -> None:

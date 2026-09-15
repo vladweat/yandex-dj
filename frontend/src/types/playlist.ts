@@ -12,9 +12,16 @@ export interface PlaylistTrackResponse {
   similarity_score: number;
 }
 
+export interface PlaylistPoolStats {
+  raw: number;
+  clean: number;
+  selected: number;
+}
+
 export interface PlaylistGenerateResponse {
   title: string;
   description: string;
   playlist_url: string;
   tracks: PlaylistTrackResponse[];
+  pool_stats?: PlaylistPoolStats | null;
 }
