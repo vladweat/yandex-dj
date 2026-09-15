@@ -1,7 +1,10 @@
 "use client";
 
+import { Suspense } from "react";
+
 import { Panel } from "@/components/ui/card";
 import { PlaylistForm } from "@/features/playlist/playlist-form";
+import { PlaylistHistory } from "@/features/playlist/playlist-history";
 import { PlaylistResult } from "@/features/playlist/playlist-result";
 
 export function PlaylistPage() {
@@ -12,9 +15,12 @@ export function PlaylistPage() {
           title="Генерация плейлиста"
           subtitle="Промпт → Яндекс Музыка. Можно взять готовый пример ниже формы."
         >
-          <PlaylistForm />
+          <Suspense fallback={<p className="text-sm text-slate-400">Загрузка формы…</p>}>
+            <PlaylistForm />
+          </Suspense>
         </Panel>
         <PlaylistResult />
+        <PlaylistHistory />
       </div>
     </main>
   );

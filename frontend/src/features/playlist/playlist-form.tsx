@@ -1,9 +1,11 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -12,40 +14,67 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiRequestError, clearSessionId, generatePlaylist } from "@/lib/api";
 import { usePlaylistStore } from "@/features/playlist/stores/playlist-store";
 import { useToastStore } from "@/stores/toast-store";
+import type { DiversityMode } from "@/types/playlist";
+import { cn } from "@/lib/utils";
+import {
+  parseExcludeArtists,
+  SAMPLE_PROMPTS,
+  validatePlaylistFormInput,
+} from "@/features/playlist/playlist-form-utils";
 
-const SAMPLE_PROMPTS = [
-  "под настроение пока варю макароны",
-  "спокойная музыка для кодинга поздней ночью",
-  "саундтрек для ночной поездки в стиле синтвейв",
-] as const;
+const selectClassName = cn(
+  "flex h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none transition-colors focus:border-blue-500 disabled:opacity-50 sm:h-9 sm:text-sm",
+);
 
 export function PlaylistForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const setResult = usePlaylistStore((state) => state.setResult);
+  const draft = usePlaylistStore((state) => state.draft);
+  const setDraft = usePlaylistStore((state) => state.setDraft);
   const pushToast = useToastStore((state) => state.push);
+
   const [prompt, setPrompt] = useState("");
   const [trackCount, setTrackCount] = useState(25);
   const [instrumentalOnly, setInstrumentalOnly] = useState(false);
+  const [excludeArtists, setExcludeArtists] = useState("");
+  const [diversity, setDiversity] = useState<DiversityMode>("normal");
+  const [sourceId, setSourceId] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [apiUnavailable, setApiUnavailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    const fromQuery = searchParams.get("prompt");
+    if (fromQuery?.trim()) {
+      setPrompt(fromQuery);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!draft) return;
+    setPrompt(draft.prompt);
+    setTrackCount(draft.trackCount);
+    setInstrumentalOnly(draft.instrumentalOnly);
+    setExcludeArtists(draft.excludeArtists);
+    setDiversity(draft.diversity);
+    setSourceId(draft.sourceId);
+    setDraft(null);
+  }, [draft, setDraft]);
+
+  async function runGenerate(overrides?: { sourceId?: string | null }) {
     setValidationError(null);
+    setApiUnavailable(false);
+
+    const validation = validatePlaylistFormInput({ prompt, trackCount });
+    if (validation) {
+      setValidationError(validation);
+      return;
+    }
 
     const trimmed = prompt.trim();
-    if (!trimmed) {
-      setValidationError("Введите описание плейлиста");
-      return;
-    }
-    if (trimmed.length > 2000) {
-      setValidationError("Промпт не длиннее 2000 символов");
-      return;
-    }
-    if (!Number.isFinite(trackCount) || trackCount < 1 || trackCount > 50) {
-      setValidationError("Количество треков: от 1 до 50");
-      return;
-    }
+    const nextSourceId = overrides?.sourceId !== undefined ? overrides.sourceId : sourceId;
 
     setSubmitting(true);
     setResult(null);
@@ -54,10 +83,20 @@ export function PlaylistForm() {
         prompt: trimmed,
         track_count: trackCount,
         instrumental_only: instrumentalOnly,
+        exclude_artists: parseExcludeArtists(excludeArtists),
+        diversity,
+        source_id: nextSourceId,
       });
       setResult(response);
+      setSourceId(null);
+      void queryClient.invalidateQueries({ queryKey: ["playlists", "history"] });
     } catch (err) {
       if (err instanceof ApiRequestError) {
+        if (err.status === 0) {
+          setApiUnavailable(true);
+          pushToast("API недоступен", "error");
+          return;
+        }
         if (err.status === 401) {
           clearSessionId();
           pushToast("Сессия истекла — войдите снова", "error");
@@ -69,20 +108,35 @@ export function PlaylistForm() {
           return;
         }
         if (err.status === 502 || err.status === 503) {
-          pushToast("Сервис временно недоступен", "error");
+          setApiUnavailable(true);
+          pushToast("API недоступен", "error");
           return;
         }
         pushToast(err.message, "error");
         return;
       }
-      pushToast("Не удалось сгенерировать плейлист", "error");
+      setApiUnavailable(true);
+      pushToast("API недоступен", "error");
     } finally {
       setSubmitting(false);
     }
   }
 
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    await runGenerate({ sourceId: null });
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {apiUnavailable ? (
+        <Alert variant="destructive">
+          <AlertDescription>
+            API недоступен. Проверьте, что backend запущен, и попробуйте снова.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <div>
         <Label htmlFor="prompt">Опишите плейлист</Label>
         <Textarea
@@ -123,18 +177,51 @@ export function PlaylistForm() {
           />
         </div>
 
-        <div className="flex items-end gap-2 pb-2">
-          <Checkbox
-            id="instrumental"
-            checked={instrumentalOnly}
-            onCheckedChange={(checked) => setInstrumentalOnly(checked === true)}
+        <div>
+          <Label htmlFor="diversity">Разнообразие</Label>
+          <select
+            id="diversity"
+            className={selectClassName}
+            value={diversity}
+            onChange={(e) => setDiversity(e.target.value as DiversityMode)}
             disabled={submitting}
-          />
-          <Label htmlFor="instrumental" className="mb-0 cursor-pointer">
-            Только инструментальная музыка
-          </Label>
+          >
+            <option value="normal">Обычное</option>
+            <option value="high">Больше разнообразия</option>
+          </select>
         </div>
       </div>
+
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="instrumental"
+          checked={instrumentalOnly}
+          onCheckedChange={(checked) => setInstrumentalOnly(checked === true)}
+          disabled={submitting}
+        />
+        <Label htmlFor="instrumental" className="mb-0 cursor-pointer">
+          Только инструментальная музыка
+        </Label>
+      </div>
+
+      <div>
+        <Label htmlFor="exclude-artists">Исключить артистов</Label>
+        <Textarea
+          id="exclude-artists"
+          value={excludeArtists}
+          onChange={(e) => setExcludeArtists(e.target.value)}
+          placeholder="Kavinsky, Perturbator"
+          rows={2}
+          disabled={submitting}
+        />
+        <p className="mt-1 text-xs text-slate-500">Через запятую, до 20 имён</p>
+      </div>
+
+      {sourceId ? (
+        <p className="text-xs text-slate-400">
+          Режим «ещё вариант»: профиль возьмём из прошлой генерации (без LLM).
+        </p>
+      ) : null}
 
       <Button type="submit" disabled={submitting} className="w-full sm:w-auto">
         {submitting ? (

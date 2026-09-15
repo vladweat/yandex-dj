@@ -28,3 +28,7 @@ class ExportError(AppError):
 
 class YandexMusicError(AppError):
     """Ошибки API Яндекс Музыки."""
+
+
+class NotFoundError(AppError):
+    """Ресурс не найден или недоступен текущему пользователю."""

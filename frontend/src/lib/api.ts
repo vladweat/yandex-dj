@@ -5,7 +5,11 @@ import type {
   DeviceFlowStartResponse,
 } from "@/types/auth";
 import type { HealthResponse } from "@/types/health";
-import type { PlaylistGenerateRequest, PlaylistGenerateResponse } from "@/types/playlist";
+import type {
+  PlaylistGenerateRequest,
+  PlaylistGenerateResponse,
+  PlaylistHistoryResponse,
+} from "@/types/playlist";
 import type { YandexStatusResponse } from "@/types/yandex";
 
 const CONFIGURED_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -81,7 +85,12 @@ async function authorizedFetch(path: string, options: RequestInit = {}): Promise
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await authorizedFetch(path, options);
+  let response: Response;
+  try {
+    response = await authorizedFetch(path, options);
+  } catch {
+    throw new ApiRequestError("API недоступен", 0);
+  }
 
   if (!response.ok) {
     const message = await parseError(response);
@@ -151,4 +160,19 @@ export async function generatePlaylist(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export async function listPlaylists(
+  limit = 20,
+  offset = 0,
+): Promise<PlaylistHistoryResponse> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  return apiFetch<PlaylistHistoryResponse>(`/playlists?${params.toString()}`);
+}
+
+export async function getPlaylist(id: string): Promise<PlaylistGenerateResponse> {
+  return apiFetch<PlaylistGenerateResponse>(`/playlists/${id}`);
 }

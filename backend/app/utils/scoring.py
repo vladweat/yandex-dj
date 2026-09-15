@@ -15,6 +15,9 @@ from app.utils.quality import (
 REFERENCE_ANCHOR_BOOST = 0.03
 ANCHOR_MAX_TRACKS_PER_ARTIST = 3
 ANCHOR_FILL_MAX_TRACKS_PER_ARTIST = 5
+HIGH_DIVERSITY_MAX_PER_ARTIST = 1
+HIGH_DIVERSITY_ANCHOR_MAX = 2
+HIGH_DIVERSITY_ANCHOR_FILL = 3
 TAIL_SCORE_DROP = 0.04
 
 
@@ -190,6 +193,8 @@ def _tail_score_floor(
 def select_playlist_tracks(
     ranked: list[tuple[TrackCandidate, float]],
     profile: MusicProfile,
+    *,
+    diversity: str = "normal",
 ) -> list[tuple[TrackCandidate, float]]:
     """Топ-N: elbow + diversity; fill до limit с мягким порогом и расширенным лимитом якорей."""
     limit = profile.target_track_count
@@ -197,7 +202,14 @@ def select_playlist_tracks(
         return []
 
     scores = [score for _, score in ranked]
-    max_per_artist = max_tracks_per_artist(limit)
+    if diversity == "high":
+        max_per_artist = HIGH_DIVERSITY_MAX_PER_ARTIST
+        anchor_max = HIGH_DIVERSITY_ANCHOR_MAX
+        anchor_fill = HIGH_DIVERSITY_ANCHOR_FILL
+    else:
+        max_per_artist = max_tracks_per_artist(limit)
+        anchor_max = ANCHOR_MAX_TRACKS_PER_ARTIST
+        anchor_fill = ANCHOR_FILL_MAX_TRACKS_PER_ARTIST
     strict_floor = _playlist_score_floor(scores, limit, strict=True)
 
     selected = apply_diversity_filter(
@@ -206,7 +218,7 @@ def select_playlist_tracks(
         max_per_artist=max_per_artist,
         min_score=strict_floor,
         profile=profile,
-        anchor_max_per_artist=ANCHOR_MAX_TRACKS_PER_ARTIST,
+        anchor_max_per_artist=anchor_max,
     )
     soft_floor = _playlist_score_floor(scores, limit, strict=False)
     if len(selected) < limit and soft_floor < strict_floor:
@@ -217,7 +229,7 @@ def select_playlist_tracks(
             max_per_artist=max_per_artist,
             min_score=soft_floor,
             profile=profile,
-            anchor_max_per_artist=ANCHOR_MAX_TRACKS_PER_ARTIST,
+            anchor_max_per_artist=anchor_max,
         )
 
     if len(selected) < limit:
@@ -229,7 +241,7 @@ def select_playlist_tracks(
             max_per_artist=max_per_artist,
             min_score=tail_floor,
             profile=profile,
-            anchor_max_per_artist=ANCHOR_FILL_MAX_TRACKS_PER_ARTIST,
+            anchor_max_per_artist=anchor_fill,
         )
 
     return _sort_by_score(selected)[:limit]

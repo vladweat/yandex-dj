@@ -1,0 +1,40 @@
+import uuid
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.db.models.user import User
+
+
+class PlaylistGeneration(Base):
+    __tablename__ = "playlist_generations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    playlist_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    yandex_kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    profile: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    tracks: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    pool_stats: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    options: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("playlist_generations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped["User"] = relationship(back_populates="playlist_generations")

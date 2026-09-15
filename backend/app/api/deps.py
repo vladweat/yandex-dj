@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.session import Session
 from app.db.session import get_db
+from app.repositories.playlist_generation_repository import PlaylistGenerationRepository
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.services.auth_service import AuthService
@@ -57,18 +58,25 @@ def get_scoring_service() -> ScoringService:
     return ScoringService()
 
 
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    async for session in get_db():
+        yield session
+
+
 def get_playlist_service(
+    db: AsyncSession = Depends(get_db_session),
     llm: LLMService = Depends(get_llm_service),
     retrieval: RetrievalService = Depends(get_retrieval_service),
     scoring: ScoringService = Depends(get_scoring_service),
     yandex: YandexMusicService = Depends(get_yandex_music_service),
 ) -> PlaylistService:
-    return PlaylistService(llm=llm, retrieval=retrieval, scoring=scoring, yandex=yandex)
-
-
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    async for session in get_db():
-        yield session
+    return PlaylistService(
+        llm=llm,
+        retrieval=retrieval,
+        scoring=scoring,
+        yandex=yandex,
+        repo=PlaylistGenerationRepository(db),
+    )
 
 
 async def get_auth_service(
