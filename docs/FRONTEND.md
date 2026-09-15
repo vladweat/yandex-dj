@@ -9,10 +9,9 @@
 | Путь | Экран |
 | --- | --- |
 | `/login` | OAuth Device Flow: код + ссылка на ya.ru/device, poll до `authenticated` |
-| `/` | Генерация плейлиста: промпт, опции, результат (ссылка + треки) |
+| `/` | Генерация + результат + история; `?prompt=` prefill |
 | `/health` | Статус API (опционально, для отладки) |
-
-Временная HTML-страница `GET /test/auth` (FastAPI static) — только для отладки до появления `frontend/`; после скелета Next.js удалить.
+| `/debug` | Статус аккаунта Яндекс Музыки (опционально) |
 
 ## Авторизация (отличие от docwise)
 
@@ -34,22 +33,25 @@ Prompt DJ: **Bearer `session_id`** (UUID из Device Flow).
 
 Одна колонка (без split-pane docwise):
 
-1. **Форма:** текстовый промпт, `track_count` (по умолчанию 25), `instrumental_only`.
-2. **Быстрые примеры:** кнопки под textarea (kitchen / coding / synthwave) — для ручного регресса качества.
-3. **Submit:** `POST /api/v1/playlists/generate` с Bearer; при `401` — сброс сессии → `/login`.
-4. **Состояния:** idle → loading («Генерируем… (обычно 7–20 сек)») → success | error.
-5. **Результат:** `title`, `description`, кнопка «Открыть в Яндекс Музыке», badges `raw/clean/selected` (`pool_stats`), таблица треков (`#`, `title`, `artist`, duration, `similarity_score`).
+1. **Форма:** промпт, `track_count`, `instrumental_only`, `diversity` (normal/high), `exclude_artists` (через запятую).
+2. **Prefill:** `?prompt=…` из query; draft из истории («Повторить»).
+3. **Быстрые примеры:** кнопки под textarea (kitchen / coding / synthwave).
+4. **Submit:** `POST /api/v1/playlists/generate`; при `401` — сброс → `/login`.
+5. **Состояния:** idle → loading («Генерируем…») → success | error; сеть/502/503 → баннер «API недоступен».
+6. **Результат:** `title`, `description`, ссылка в Яндекс, «Копировать ссылку и промпт», «Ещё вариант» (`source_id`, без LLM), badges `pool_stats`, блок `MusicProfile`, таблица треков.
+7. **История:** `GET /api/v1/playlists` — список; клик → `GET /playlists/{id}`; «Повторить» → prefill промпта.
 
 Ошибки — тост/баннер, без разрыва страницы:
 
 | Код | UX |
 | --- | --- |
+| `0` / сеть | Баннер + тост «API недоступен» |
 | `401` | Сброс `session_id`, тост, редирект на `/login` |
 | `422` | Валидация промпта под полем (1–2000 символов, `track_count` 1–50) |
-| `500` / `502` / `503` | Тост «Сервис временно недоступен» |
+| `502` / `503` | Баннер/тост «API недоступен» |
 
-Полный контракт `POST /playlists/generate`: [API.md](API.md) § Playlists.  
-Критерии качества (kitchen prompt): [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md).
+Полный контракт: [API.md](API.md) § Playlists.  
+Качество: [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md).
 
 ### Ручной тест UI
 
@@ -57,7 +59,9 @@ Prompt DJ: **Bearer `session_id`** (UUID из Device Flow).
 make up-frontend   # http://localhost:3001
 # 1) /login → Device Flow
 # 2) / → пример «под настроение пока варю макароны»
-# 3) Ожидание: 25 треков, clean badge ≥ 40, ссылка на Яндекс Музыку
+# 3) Ожидание: 25 треков, profile-блок, запись в «История»
+# 4) «Ещё вариант» → новый плейлист без LLM; история обновилась
+# 5) /?prompt=test → промпт подставлен
 ```
 
 ## Shell
@@ -78,11 +82,8 @@ make up-frontend   # http://localhost:3001
 
 | Команда | Назначение |
 | --- | --- |
-| `make deps-frontend` | `node_modules` на хосте (offline build) |
-| `make up-frontend` | пересборка только UI |
-| `make typecheck` | `tsc --noEmit` в `frontend/` |
-| `make test-frontend` | `vitest run` |
-
-Переменные: `NEXT_PUBLIC_API_URL=http://localhost:8000` (порт API Prompt DJ). Frontend — `:3001` (как docwise, чтобы не конфликтовать с другими проектами).
-
-Подробнее: [CONVENTIONS.md](CONVENTIONS.md), [INFRASTRUCTURE.md](INFRASTRUCTURE.md).
+| `make deps-frontend` | Offline deps для Docker |
+| `make up-frontend` | Поднять frontend на `:3001` |
+| `make typecheck` | `tsc --noEmit` |
+| `make test-frontend` | vitest (auth-gates + playlist form) |
+| `make logs-frontend` | Логи контейнера |

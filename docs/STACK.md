@@ -63,9 +63,7 @@ Embeddings подключаются **сразу** (не откладывают�
 
 Авторизация UI: Bearer `session_id` (Device Flow), не cookie. Подробнее: [FRONTEND.md](FRONTEND.md).
 
-Временно: `GET /test/auth` (статическая HTML в FastAPI) — до появления `frontend/`.
-
-Telegram-бот — в backlog.
+Telegram-бот — этап 7 backlog ([DEVELOPMENT.md](DEVELOPMENT.md)).
 
 ## База данных
 
@@ -73,16 +71,16 @@ Telegram-бот — в backlog.
 |-----------|-------|
 | СУБД | **PostgreSQL 15** (Docker-образ `postgres:15`) |
 | ORM | **SQLAlchemy** |
-| Миграции | **Alembic** (при появлении схемы) |
+| Миграции | **Alembic** (`users` / `sessions` и далее) |
 | Шифрование токенов | **cryptography** (Fernet) |
 
 SQLite не используется.
 
-## Кэш (позже)
+## Кэш
 
-| Компонент | Выбор | Когда |
-|-----------|-------|-------|
-| Redis 7 | Кэш метаданных треков | Этап 3 (retrieval) |
+| Компонент | Выбор | Назначение |
+|-----------|-------|------------|
+| Redis 7 | Кэш метаданных треков | retrieval |
 
 ## Конфигурация
 
@@ -146,9 +144,9 @@ httpx  # тесты FastAPI
 ```yaml
 services:
   db:        postgres:15
-  redis:     redis:7      # этап 3+
+  redis:     redis:7
   api:       prompt-dj-api (offline build, см. ниже)
-  frontend:  node:20-alpine → Next.js :3001  # после этапа 1.5
+  frontend:  node:20-alpine → Next.js :3001
 ```
 
 Порты по умолчанию: API `8000`, frontend `3001` (как docwise, без конфликта с другими проектами).

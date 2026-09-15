@@ -65,8 +65,10 @@ class ScoringService:
     def select(
         ranked: list[tuple[TrackCandidate, float]],
         profile: MusicProfile,
+        *,
+        diversity: str = "normal",
     ) -> list[ScoredTrack]:
-        selected = select_playlist_tracks(ranked, profile)
+        selected = select_playlist_tracks(ranked, profile, diversity=diversity)
         return [ScoredTrack.from_candidate(track, score) for track, score in selected]
 
     def _rank_pool_sync(

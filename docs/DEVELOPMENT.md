@@ -6,16 +6,18 @@
 
 | Область | Состояние |
 |---------|-----------|
-| Документация | ✅ SPEC, STACK, ARCHITECTURE, API, LLM_SCHEMA |
+| Документация | ✅ SPEC, STACK, ARCHITECTURE, API, LLM_SCHEMA, FRONTEND, PLAYLIST_QUALITY |
 | Окружение | ✅ `make venv` — venv + модель e5-base + libgomp |
-| Docker | ✅ `prompt-dj-api` + `prompt-dj-db` (PostgreSQL 15) + Redis 7 |
+| Docker | ✅ `prompt-dj-api` + `prompt-dj-db` (PostgreSQL 15) + Redis 7 + frontend |
 | FastAPI | ✅ `/api/v1/health` → `200 ok` |
-| Auth / Playlists | ✅ Auth + `POST /playlists/generate` (end-to-end) |
-| Frontend | ⏳ каркас из docwise — [FRONTEND.md](FRONTEND.md); временно `GET /test/auth` |
+| Auth / Playlists | ✅ Device Flow + `POST /playlists/generate` (end-to-end) |
+| Frontend | ✅ Next.js: `/login`, `/` (генерация + таблица + `pool_stats`) — [FRONTEND.md](FRONTEND.md) |
 | Пайплайн (LLM → export) | ✅ LLM → retrieval → scoring → export |
-| Качество плейлистов | ⚠️ топ хороший, **18–19/25** на mood-only промптах — см. [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) |
+| Качество плейлистов | ⚠️ P0 закрыт (kitchen 25/25); **P1 хвост** / **P2 latency** — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) |
+| Продукт (этап 6) | ✅ история / реген / profile / опции / UX / CI |
+| CI | ✅ `.github/workflows/ci.yml` — ruff + pytest + tsc/vitest |
 
-**Следующий шаг:** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) § «Открытые задачи» (P0: clean-пул ≥50), затем этап 6 backlog.
+**MVP закрыт.** Фокус: этап 5.5 (P1 → P2).
 
 ---
 
@@ -31,7 +33,7 @@
 - [x] Скрипты: `build-venv.sh`, `verify-venv.sh`, `pack-offline-bundle.sh`, `prepare_embeddings.py`
 - [x] `Settings` + `.env.example`
 - [x] Async SQLAlchemy (`create_async_engine`, `get_db`)
-- [x] Alembic каркас (`env.py`) — **миграций пока нет**
+- [x] Alembic (`env.py` + миграции со этапа 1)
 - [x] Fernet: `encrypt_token` / `decrypt_token` (`core/security.py`)
 - [x] Pydantic-схемы: `MusicProfile`, auth, playlist, health
 - [x] Роутеры: health, auth, llm, retrieval, scoring, playlists (`api/v1/router.py`)
@@ -83,23 +85,23 @@ make migrate && make auth-poll
 
 Через API — те же шаги: `POST .../start` → подтверждение на телефоне → `POST .../poll`.
 
-Через UI: `GET /test/auth` (временно) или `/login` в Next.js после этапа 1.5.
+Через UI: `http://localhost:3001/login` (Next.js Device Flow).
 
 ---
 
 ## Этап 1.5. Frontend (каркас из docwise)
 
-**Цель:** Next.js UI с Device Flow и экраном генерации (заглушка до готового пайплайна).
+**Цель:** Next.js UI с Device Flow и экраном генерации.
 
 - [x] `frontend/` — скелет по [REUSE_FROM_DOCWISE.md](REUSE_FROM_DOCWISE.md)
 - [x] `components/ui`, `layout`, `query-provider`, `toast-host`
 - [x] `lib/api.ts` — Bearer `session_id`, `fetchMe`, Device Flow
 - [x] `features/auth` — `/login`, gates, `auth-provider`
-- [x] `features/playlist` — форма промпта, заглушка результата
+- [x] `features/playlist` — форма промпта, результат (таблица + `pool_stats`)
 - [x] `docker-compose` сервис `frontend`, `make deps-frontend` / `up-frontend`
 - [x] Удалить `backend/app/static/auth-test.html` и `GET /test/auth`
 
-**Проверка:** `http://localhost:3001/login` → Device Flow → профиль в header; `/` — форма промпта.
+**Проверка:** `http://localhost:3001/login` → Device Flow → профиль в header; `/` — генерация плейлиста.
 
 ---
 
@@ -189,7 +191,7 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 
 ## Этап 5.5. Качество плейлистов
 
-**Цель:** стабильно **25 релевантных** треков на промптах без артистов (kitchen, coding, …).
+**Цель:** стабильно **25 релевантных** треков на промптах без артистов (kitchen, coding, …); latency в бюджете.
 
 - [x] Универсальный SEO pre-filter (`quality.py`)
 - [x] Embedding без `reference_artists` в query + anchor boost
@@ -197,21 +199,45 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 - [x] Retrieval: similar seeds, frequency-rank discovered + similar, `min_clean_candidates`
 - [x] Scoring feedback при `selected < N`; `pool_stats` в ответе
 - [x] **P0:** kitchen curl/UI → `tracks.length == 25`, `clean ≥ 40`
-- [x] Frontend: генерация без заглушки «Скоро», таблица + `pool_stats`
-- [ ] **P1:** хвост без embedding-мусора (Hauvy и т.п.)
+- [x] Frontend: генерация без заглушки, таблица + `pool_stats`
+- [ ] **P1:** хвост без embedding-мусора (Hauvy и т.п.); cap якорей ~60%
 - [ ] **P2:** latency budget 7–12 сек (`SCORING_EMBED_LIMIT` / меньше double-embed)
 
 **Handoff для агента:** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — не добавлять regex под промпт.  
 **UI-тест:** [FRONTEND.md](FRONTEND.md) § «Ручной тест UI».
 
+**Порядок:** P1 → P2, затем этап 6.
+
 ---
 
-## Этап 6. Backlog
+## Этап 6. Продукт вокруг генерации + инженерия
 
-- [ ] Telegram-бот (`aiogram`)
-- [ ] BPM-анализ (`librosa`)
-- [ ] AI-обложка, анализ lyrics
-- [ ] Celery/Arq при необходимости async-генерации
+**Цель:** после стабильного качества — UX итерации и история; CI.
+
+Приоритет сверху вниз:
+
+- [x] **История генераций** — список своих плейлистов (промпт, дата, URL, `pool_stats`); модель + API + UI
+- [x] **Регенерация / итерация** — «ещё вариант» с `source_id` (reuse profile, без LLM); `exclude_artists`
+- [x] **Прозрачность профиля** — `MusicProfile` в ответе generate и в UI
+- [x] **Опции генерации** — `exclude_artists`, `instrumental_only`, `diversity=high`
+- [x] **UX-мелочи** — prefill `?prompt=…`, копирование ссылки+промпта, «API недоступен»
+- [x] **CI** — `.github/workflows/ci.yml`: `ruff` + `pytest` + `tsc` / vitest
+- [x] **Golden-промпты** — `tests/test_golden_prompts.py` (kitchen / coding / synthwave, mock scores)
+- [x] Frontend-тесты (vitest) на auth-gates и форму генерации
+
+Не делать на этом этапе: новые vector DB, переписывание UI «с нуля», regex под конкретные промпты.
+
+**Миграция:** `a1b2c3d4e5f6_add_playlist_generations` — `make migrate`.
+
+---
+
+## Этап 7. Backlog (после этапа 6)
+
+- [ ] Telegram-бот (`aiogram`) — тот же API
+- [ ] BPM-анализ (`librosa`) — сортировка по нарастанию темпа
+- [ ] Анализ lyrics (`tracks_lyrics`) — «без слов» / NSFW-фильтр
+- [ ] AI-обложка (Stable Diffusion / Flux)
+- [ ] Celery/Arq — только если генерация стабильно > ~15 сек или нужна очередь
 
 ---
 
@@ -220,9 +246,10 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 | Инструмент | Статус |
 |------------|--------|
 | `ruff` | ✅ в `pyproject.toml` |
-| `pytest` | ✅ auth, health, llm, retrieval, scoring |
-| `vitest` / `tsc` | ⏳ после `frontend/` |
-| CI (`.github/`) | ❌ не настроен |
+| `pytest` | ✅ auth, health, llm, retrieval, scoring, quality, playlist, export, golden |
+| `tsc` | ✅ `make typecheck` |
+| `vitest` | ✅ auth-gates + playlist form (`make test-frontend`) |
+| CI (`.github/`) | ✅ `ci.yml` |
 
 ```bash
 cd backend

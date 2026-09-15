@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.db.models.playlist_generation import PlaylistGeneration
     from app.db.models.session import Session
 
 
@@ -28,5 +29,8 @@ class User(Base):
     )
 
     sessions: Mapped[list["Session"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    playlist_generations: Mapped[list["PlaylistGeneration"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

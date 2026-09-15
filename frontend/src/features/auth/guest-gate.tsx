@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, type ReactNode } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { postLoginPath } from "@/features/auth/auth-paths";
 import { useAuth } from "@/features/auth/auth-provider";
 
 function GateStatus({ label }: { label: string }) {
@@ -13,13 +14,6 @@ function GateStatus({ label }: { label: string }) {
       <p className="text-sm text-slate-400">{label}</p>
     </div>
   );
-}
-
-function postLoginPath(next: string | null): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/login")) {
-    return "/";
-  }
-  return next;
 }
 
 function GuestRedirect({ children }: { children: ReactNode }) {

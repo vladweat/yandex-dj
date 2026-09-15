@@ -1,10 +1,21 @@
+import uuid
+from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+from app.schemas.llm import MusicProfile
+
+DiversityMode = Literal["normal", "high"]
 
 
 class PlaylistGenerateRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=2000)
     track_count: int = Field(default=25, ge=1, le=50)
     instrumental_only: bool = False
+    exclude_artists: list[str] = Field(default_factory=list, max_length=20)
+    diversity: DiversityMode = "normal"
+    source_id: uuid.UUID | None = None
 
 
 class PlaylistTrackResponse(BaseModel):
@@ -22,8 +33,26 @@ class PlaylistPoolStats(BaseModel):
 
 
 class PlaylistGenerateResponse(BaseModel):
+    id: uuid.UUID
+    prompt: str
     title: str
     description: str
     playlist_url: str
     tracks: list[PlaylistTrackResponse]
     pool_stats: PlaylistPoolStats | None = None
+    profile: MusicProfile
+
+
+class PlaylistHistoryItem(BaseModel):
+    id: uuid.UUID
+    prompt: str
+    title: str
+    playlist_url: str
+    pool_stats: PlaylistPoolStats | None = None
+    created_at: datetime
+
+
+class PlaylistHistoryResponse(BaseModel):
+    items: list[PlaylistHistoryItem]
+    limit: int
+    offset: int

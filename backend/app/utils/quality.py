@@ -58,7 +58,9 @@ _SEO_LABEL_ARTIST = re.compile(
     re.IGNORECASE,
 )
 
-_TITLE_STOPWORDS = frozenset({"a", "an", "the", "of", "and", "la", "le", "de", "el", "y", "i", "to"})
+_TITLE_STOPWORDS = frozenset(
+    {"a", "an", "the", "of", "and", "la", "le", "de", "el", "y", "i", "to"}
+)
 
 _GENRE_TOKENS = frozenset(
     {

@@ -15,6 +15,7 @@
 | **Полнота N треков** | ✅ discovered similar + frequency-rank; tail fill без `score[N-1]` |
 | `pool_stats` в ответе | ✅ `{raw, clean, selected}` |
 | Latency 7–12 сек | ⚠️ Часто 10–20+ сек; feedback/второй embed только если selected < N |
+| Следующий фокус | P1 хвост → P2 latency → [DEVELOPMENT.md](DEVELOPMENT.md) этап 6 |
 
 **Не ходить по кругу:** не добавлять regex под конкретный промпт/жанр.
 
@@ -150,11 +151,13 @@ user prompt
    - rerank top-50 cross-encoder (дорого).
 2. **Перекос на якоря** (~80%): после набора 25 увеличить diversity на non-anchor или cap anchor at 60% плейлиста.
 
-### P2 — Продукт
+### P2 — Latency
 
 1. ✅ Frontend показывает `tracks` + `similarity_score` + `pool_stats`.
-2. **Latency budget:** full-pool embed vs 7–12 сек — замерить; возможно `SCORING_EMBED_LIMIT=80`.
-3. ✅ Референсный curl живёт здесь и в [API.md](API.md); SPEC §8 только ссылается.
+2. **Latency budget:** full-pool embed vs 7–12 сек — замерить; возможно `SCORING_EMBED_LIMIT=80`; меньше double-embed / feedback только при `selected < N`.
+3. ✅ Референсный curl живёт здесь и в [API.md](API.md).
+
+**После P1→P2:** продуктовые фичи (история, регенерация, CI) — [DEVELOPMENT.md](DEVELOPMENT.md) этап 6.
 
 ---
 
@@ -189,7 +192,7 @@ Frontend: `make up-frontend` или hot-reload контейнера `frontend`.
 
 ## Связанные документы
 
-- [SPEC.md](SPEC.md) §4.3–4.4 — требования retrieval/scoring
+- [SPEC.md](SPEC.md) §4.3–4.4 — требования retrieval/scoring; §7–8 roadmap
 - [API.md](API.md) — контракт `POST /playlists/generate` + `pool_stats`
 - [FRONTEND.md](FRONTEND.md) — ручной тест через UI
-- [DEVELOPMENT.md](DEVELOPMENT.md) — этапы roadmap
+- [DEVELOPMENT.md](DEVELOPMENT.md) — этапы 5.5 (качество) → 6 (продукт) → 7 (backlog)

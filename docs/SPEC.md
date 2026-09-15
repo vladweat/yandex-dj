@@ -39,7 +39,7 @@
 | БД | **PostgreSQL 15** + SQLAlchemy |
 | Кэш | Redis 7 (этап retrieval) |
 | Dev | **ruff**, pytest |
-| Backlog | Next.js, Telegram, Celery, audio ML |
+| Backlog | Telegram, Celery, audio ML |
 
 ---
 
@@ -189,22 +189,33 @@
 
 ## 7. Roadmap
 
-| Этап | Содержание |
-|------|------------|
-| 1 | Инфраструктура, OAuth Device Flow, проверка токена |
-| 2 | LLM Engine: системный промпт, instructor, 10–15 тестовых промптов |
-| 3 | Retrieval: async сбор, дедупликация |
-| 4 | Scoring: sentence-transformers, cosine, diversity |
-| 5 | Export + FastAPI (end-to-end) |
-| 6 (backlog) | BPM-анализ, AI-обложка, анализ lyrics |
+| Этап | Содержание | Статус |
+|------|------------|--------|
+| 0–1 | Инфраструктура, OAuth Device Flow | ✅ |
+| 1.5 | Next.js UI (Device Flow + генерация) | ✅ |
+| 2–4 | LLM → retrieval → scoring | ✅ |
+| 5 | Export + FastAPI end-to-end | ✅ |
+| 5.5 | Качество: P0 полнота ✅; P1 хвост; P2 latency | ⚠️ |
+| 6 | История, реген, опции, UX, CI | ✅ |
+| 7 | Telegram, BPM, lyrics, AI-обложка, Celery | backlog |
 
-Детальный чеклист: [DEVELOPMENT.md](DEVELOPMENT.md).
+Детальный чеклист: [DEVELOPMENT.md](DEVELOPMENT.md). Качество: [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md).
 
 ---
 
-## 8. Backlog (будущее)
+## 8. Ближайшие доработки и backlog
 
-- **Качество плейлистов (хвост / latency):** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — P1 false positives, P2 latency; полнота N закрыта
+**Сейчас (этап 5.5):**
+- **P1 хвост:** embedding false positives, cap якорей — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md)
+- **P2 latency:** уложиться в 7–12 сек
+
+**Этап 6 (продукт ✅):**
+- ✅ История генераций, «ещё вариант» (`source_id`), показ `MusicProfile`, опции, UX
+- ✅ CI + golden-промпты + vitest
+
+**Этап 7 (позже):**
+- **Telegram-бот** (`aiogram`)
 - **BPM-анализ:** `librosa` на 30-сек превью, сортировка по нарастанию темпа
-- **AI-обложка:** Stable Diffusion / Flux → загрузка в плейлист
 - **Анализ lyrics:** `tracks_lyrics` для фильтрации нежелательного контента
+- **AI-обложка:** Stable Diffusion / Flux → загрузка в плейлист
+- **Celery/Arq** — при latency ≫ бюджета или очереди

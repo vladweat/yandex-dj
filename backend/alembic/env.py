@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, pool
 
 from app.core.config import settings
 from app.db.base import Base
-from app.db.models import Session, User  # noqa: F401
+from app.db.models import PlaylistGeneration, Session, User  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url_sync)

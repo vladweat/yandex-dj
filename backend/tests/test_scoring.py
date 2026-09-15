@@ -138,6 +138,21 @@ def test_select_playlist_tracks_sorted_by_score_after_fill() -> None:
     assert scores == sorted(scores, reverse=True)
 
 
+def test_select_playlist_tracks_high_diversity_limits_per_artist() -> None:
+    profile = _profile(target_track_count=4)
+    ranked = [
+        (_track("1", "A", "Artist1"), 0.95),
+        (_track("2", "B", "Artist1"), 0.94),
+        (_track("3", "C", "Artist2"), 0.93),
+        (_track("4", "D", "Artist3"), 0.92),
+        (_track("5", "E", "Artist4"), 0.91),
+    ]
+    selected = select_playlist_tracks(ranked, profile, diversity="high")
+    artists = [track.artists[0] for track, _ in selected]
+    assert artists.count("Artist1") == 1
+    assert len(selected) == 4
+
+
 def test_select_playlist_tracks_fills_when_elbow_blocks_but_pool_large() -> None:
     profile = _profile(target_track_count=5)
     ranked = [
