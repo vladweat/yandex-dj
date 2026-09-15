@@ -89,6 +89,7 @@ describe("PlaylistForm", () => {
           diversity: "normal",
           source_id: null,
         }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
     });
     expect(usePlaylistStore.getState().result?.title).toBe("Neon");

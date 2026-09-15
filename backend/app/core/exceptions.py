@@ -32,3 +32,7 @@ class YandexMusicError(AppError):
 
 class NotFoundError(AppError):
     """Ресурс не найден или недоступен текущему пользователю."""
+
+
+class PipelineTimeoutError(AppError):
+    """Пайплайн генерации превысил PIPELINE_TIMEOUT_SEC."""

@@ -32,6 +32,13 @@ class PlaylistPoolStats(BaseModel):
     selected: int
 
 
+class PlaylistGenerationOptions(BaseModel):
+    track_count: int = 25
+    instrumental_only: bool = False
+    exclude_artists: list[str] = Field(default_factory=list)
+    diversity: DiversityMode = "normal"
+
+
 class PlaylistGenerateResponse(BaseModel):
     id: uuid.UUID
     prompt: str
@@ -41,6 +48,8 @@ class PlaylistGenerateResponse(BaseModel):
     tracks: list[PlaylistTrackResponse]
     pool_stats: PlaylistPoolStats | None = None
     profile: MusicProfile
+    options: PlaylistGenerationOptions | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class PlaylistHistoryItem(BaseModel):
@@ -49,6 +58,7 @@ class PlaylistHistoryItem(BaseModel):
     title: str
     playlist_url: str
     pool_stats: PlaylistPoolStats | None = None
+    options: PlaylistGenerationOptions | None = None
     created_at: datetime
 
 

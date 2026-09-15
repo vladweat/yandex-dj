@@ -16,6 +16,7 @@ from app.schemas.scoring import ScoredTrack
 from app.schemas.track import TrackCandidate
 from app.utils.quality import is_spurious_track
 from app.utils.scoring import (
+    apply_reference_anchor_boost,
     build_prompt_text,
     candidates_for_embedding,
     cosine_scores,
@@ -61,6 +62,25 @@ class ScoringService:
             user_prompt,
         )
 
+    async def rank_pool_merge(
+        self,
+        profile: MusicProfile,
+        existing: list[tuple[TrackCandidate, float]],
+        new_candidates: list[TrackCandidate],
+        *,
+        user_prompt: str | None = None,
+    ) -> tuple[list[tuple[TrackCandidate, float]], ScoringMethod]:
+        """Доскорить только новых кандидатов и слить с уже ранжированным пулом."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            self._rank_pool_merge_sync,
+            profile,
+            existing,
+            new_candidates,
+            user_prompt,
+        )
+
     @staticmethod
     def select(
         ranked: list[tuple[TrackCandidate, float]],
@@ -68,7 +88,14 @@ class ScoringService:
         *,
         diversity: str = "normal",
     ) -> list[ScoredTrack]:
-        selected = select_playlist_tracks(ranked, profile, diversity=diversity)
+        selected = select_playlist_tracks(
+            ranked,
+            profile,
+            diversity=diversity,
+            max_per_artist=(
+                None if diversity == "high" else settings.max_tracks_per_artist
+            ),
+        )
         return [ScoredTrack.from_candidate(track, score) for track, score in selected]
 
     def _rank_pool_sync(
@@ -95,6 +122,44 @@ class ScoringService:
         else:
             ranked = merge_embedding_rank(profile, filtered, embedded)
         return ranked, method
+
+    def _rank_pool_merge_sync(
+        self,
+        profile: MusicProfile,
+        existing: list[tuple[TrackCandidate, float]],
+        new_candidates: list[TrackCandidate],
+        user_prompt: str | None,
+    ) -> tuple[list[tuple[TrackCandidate, float]], ScoringMethod]:
+        known_ids = {track.id for track, _ in existing}
+        fresh = [
+            track
+            for track in new_candidates
+            if track.id not in known_ids and not is_spurious_track(track, profile)
+        ]
+        if not fresh:
+            return existing, "embedding" if existing else "fallback"
+
+        logger.info(
+            "Scoring incremental: existing=%d new_clean=%d",
+            len(existing),
+            len(fresh),
+        )
+
+        embedded = self._embedding_rank(profile, fresh, user_prompt)
+        if embedded is None:
+            scored_new = fallback_scores(profile, fresh)
+            method: ScoringMethod = "fallback"
+        else:
+            scored_new = apply_reference_anchor_boost(embedded, profile)
+            method = "embedding"
+
+        by_id: dict[str, tuple[TrackCandidate, float]] = {
+            track.id: (track, score) for track, score in existing
+        }
+        for track, score in scored_new:
+            by_id[track.id] = (track, score)
+        merged = sorted(by_id.values(), key=lambda item: item[1], reverse=True)
+        return merged, method
 
     def _rank_sync(
         self,

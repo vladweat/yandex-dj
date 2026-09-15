@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { ApiRequestError } from "@/lib/api";
 import {
+  classifyGenerateApiError,
+  draftFromHistoryItem,
+  generationOptionsFromResult,
   parseExcludeArtists,
   SAMPLE_PROMPTS,
   validatePlaylistFormInput,
@@ -52,5 +56,84 @@ describe("validatePlaylistFormInput", () => {
 
   it("accepts valid input", () => {
     expect(validatePlaylistFormInput({ prompt: "dark synthwave", trackCount: 25 })).toBeNull();
+  });
+});
+
+describe("generationOptionsFromResult", () => {
+  it("prefers stored options over profile fallbacks", () => {
+    const opts = generationOptionsFromResult({
+      options: {
+        track_count: 30,
+        instrumental_only: true,
+        exclude_artists: ["Kavinsky"],
+        diversity: "high",
+      },
+      profile: { target_track_count: 25, vocal_type: "any" },
+    });
+    expect(opts).toEqual({
+      track_count: 30,
+      instrumental_only: true,
+      exclude_artists: ["Kavinsky"],
+      diversity: "high",
+    });
+  });
+
+  it("falls back to profile when options missing", () => {
+    const opts = generationOptionsFromResult({
+      options: null,
+      profile: { target_track_count: 20, vocal_type: "instrumental_only" },
+    });
+    expect(opts.track_count).toBe(20);
+    expect(opts.instrumental_only).toBe(true);
+    expect(opts.diversity).toBe("normal");
+  });
+});
+
+describe("draftFromHistoryItem", () => {
+  it("restores prompt and options for Повторить", () => {
+    const draft = draftFromHistoryItem({
+      id: "1",
+      prompt: "kitchen vibe",
+      title: "Kitchen",
+      playlist_url: "https://example.com",
+      options: {
+        track_count: 15,
+        instrumental_only: false,
+        exclude_artists: ["A", "B"],
+        diversity: "high",
+      },
+      created_at: "2026-09-15T00:00:00Z",
+    });
+    expect(draft).toEqual({
+      prompt: "kitchen vibe",
+      trackCount: 15,
+      instrumentalOnly: false,
+      excludeArtists: "A, B",
+      diversity: "high",
+      sourceId: null,
+    });
+  });
+});
+
+describe("classifyGenerateApiError", () => {
+  it("maps common statuses", () => {
+    expect(classifyGenerateApiError(new ApiRequestError("x", 499))).toEqual({
+      kind: "cancelled",
+    });
+    expect(classifyGenerateApiError(new ApiRequestError("x", 401))).toEqual({
+      kind: "unauthorized",
+    });
+    expect(classifyGenerateApiError(new ApiRequestError("bad", 422))).toEqual({
+      kind: "validation",
+      message: "bad",
+    });
+    expect(classifyGenerateApiError(new ApiRequestError("slow", 504))).toEqual({
+      kind: "timeout",
+      message: "slow",
+    });
+    expect(classifyGenerateApiError(new ApiRequestError("down", 0))).toEqual({
+      kind: "unavailable",
+    });
+    expect(classifyGenerateApiError(new Error("boom"))).toEqual({ kind: "unavailable" });
   });
 });

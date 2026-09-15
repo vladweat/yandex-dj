@@ -198,7 +198,7 @@ def test_golden_kitchen_snapshot() -> None:
     assert {track.id for track, _ in selected[:5]} == {"k1", "k2", "k3", "k4", "k5"}
     top_artists = {track.artists[0] for track, _ in selected[:5]}
     assert top_artists >= {"Parcels", "Khruangbin", "Men I Trust", "Camyo"}
-    assert all(track.id not in {"kj1", "kj2"} for track, _ in selected)
+    assert all(track.id not in {"kj1", "kj2", "kj3"} for track, _ in selected)
     assert [round(score, 3) for _, score in selected[:5]] == [0.94, 0.93, 0.92, 0.91, 0.90]
 
 

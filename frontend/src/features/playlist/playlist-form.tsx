@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -11,13 +11,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiRequestError, clearSessionId, generatePlaylist } from "@/lib/api";
+import { clearSessionId, generatePlaylist } from "@/lib/api";
 import { usePlaylistStore } from "@/features/playlist/stores/playlist-store";
 import { useToastStore } from "@/stores/toast-store";
 import type { DiversityMode } from "@/types/playlist";
 import { cn } from "@/lib/utils";
 import {
+  classifyGenerateApiError,
   parseExcludeArtists,
+  pushGenerateWarnings,
   SAMPLE_PROMPTS,
   validatePlaylistFormInput,
 } from "@/features/playlist/playlist-form-utils";
@@ -44,6 +46,7 @@ export function PlaylistForm() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [apiUnavailable, setApiUnavailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const fromQuery = searchParams.get("prompt");
@@ -63,6 +66,12 @@ export function PlaylistForm() {
     setDraft(null);
   }, [draft, setDraft]);
 
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   async function runGenerate(overrides?: { sourceId?: string | null }) {
     setValidationError(null);
     setApiUnavailable(false);
@@ -76,55 +85,59 @@ export function PlaylistForm() {
     const trimmed = prompt.trim();
     const nextSourceId = overrides?.sourceId !== undefined ? overrides.sourceId : sourceId;
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setSubmitting(true);
     setResult(null);
     try {
-      const response = await generatePlaylist({
-        prompt: trimmed,
-        track_count: trackCount,
-        instrumental_only: instrumentalOnly,
-        exclude_artists: parseExcludeArtists(excludeArtists),
-        diversity,
-        source_id: nextSourceId,
-      });
+      const response = await generatePlaylist(
+        {
+          prompt: trimmed,
+          track_count: trackCount,
+          instrumental_only: instrumentalOnly,
+          exclude_artists: parseExcludeArtists(excludeArtists),
+          diversity,
+          source_id: nextSourceId,
+        },
+        { signal: controller.signal },
+      );
       setResult(response);
       setSourceId(null);
+      pushGenerateWarnings(response, pushToast);
       void queryClient.invalidateQueries({ queryKey: ["playlists", "history"] });
     } catch (err) {
-      if (err instanceof ApiRequestError) {
-        if (err.status === 0) {
-          setApiUnavailable(true);
-          pushToast("API недоступен", "error");
-          return;
-        }
-        if (err.status === 401) {
-          clearSessionId();
-          pushToast("Сессия истекла — войдите снова", "error");
-          router.replace("/login");
-          return;
-        }
-        if (err.status === 422) {
-          setValidationError(err.message);
-          return;
-        }
-        if (err.status === 502 || err.status === 503) {
-          setApiUnavailable(true);
-          pushToast("API недоступен", "error");
-          return;
-        }
-        pushToast(err.message, "error");
-        return;
+      const action = classifyGenerateApiError(err);
+      if (action.kind === "cancelled") {
+        pushToast("Генерация отменена", "info");
+      } else if (action.kind === "unauthorized") {
+        clearSessionId();
+        pushToast("Сессия истекла — войдите снова", "error");
+        router.replace("/login");
+      } else if (action.kind === "validation") {
+        setValidationError(action.message);
+      } else if (action.kind === "timeout") {
+        pushToast(action.message, "error");
+      } else if (action.kind === "unavailable") {
+        setApiUnavailable(true);
+        pushToast("API недоступен", "error");
+      } else {
+        pushToast(action.message, "error");
       }
-      setApiUnavailable(true);
-      pushToast("API недоступен", "error");
     } finally {
       setSubmitting(false);
+      abortRef.current = null;
     }
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     await runGenerate({ sourceId: null });
+  }
+
+  function handleCancel() {
+    abortRef.current?.abort();
   }
 
   return (
@@ -223,16 +236,23 @@ export function PlaylistForm() {
         </p>
       ) : null}
 
-      <Button type="submit" disabled={submitting} className="w-full sm:w-auto">
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" disabled={submitting} className="w-full sm:w-auto">
+          {submitting ? (
+            <>
+              <Loader2 className="animate-spin" />
+              Генерируем… (обычно 7–20 сек)
+            </>
+          ) : (
+            "Сгенерировать плейлист"
+          )}
+        </Button>
         {submitting ? (
-          <>
-            <Loader2 className="animate-spin" />
-            Генерируем… (обычно 7–20 сек)
-          </>
-        ) : (
-          "Сгенерировать плейлист"
-        )}
-      </Button>
+          <Button type="button" variant="outline" onClick={handleCancel} className="w-full sm:w-auto">
+            Отменить
+          </Button>
+        ) : null}
+      </div>
     </form>
   );
 }

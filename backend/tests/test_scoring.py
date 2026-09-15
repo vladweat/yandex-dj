@@ -13,6 +13,8 @@ from app.utils.scoring import (
     candidates_for_embedding,
     cosine_scores,
     fallback_scores,
+    filter_by_top_median_gap,
+    max_anchor_tracks,
     max_tracks_per_artist,
     merge_embedding_rank,
     select_playlist_tracks,
@@ -53,6 +55,30 @@ def _track(track_id: str, title: str, artist: str, *, genre: str = "") -> TrackC
 def test_max_tracks_per_artist() -> None:
     assert max_tracks_per_artist(25) == 2
     assert max_tracks_per_artist(26) == 3
+    assert max_tracks_per_artist(25, configured=1) == 1
+    assert max_tracks_per_artist(30, configured=2) == 3
+
+
+def test_max_anchor_tracks_is_about_sixty_percent() -> None:
+    assert max_anchor_tracks(25) == 15
+    assert max_anchor_tracks(10) == 6
+    assert max_anchor_tracks(1) == 1
+
+
+def test_filter_by_top_median_gap_drops_embedding_false_positive() -> None:
+    ranked = [
+        (_track(str(i), f"T{i}", f"A{i}"), 0.94 - i * 0.005) for i in range(10)
+    ]
+    ranked.append((_track("junk", "Vlone", "Hauvy"), 0.70))
+    filtered = filter_by_top_median_gap(ranked)
+    assert all(track.id != "junk" for track, _ in filtered)
+    assert len(filtered) == 10
+
+
+def test_filter_by_top_median_gap_keeps_near_core() -> None:
+    ranked = [(_track(str(i), f"T{i}", f"A{i}"), 0.90 - i * 0.01) for i in range(12)]
+    filtered = filter_by_top_median_gap(ranked)
+    assert len(filtered) == 12
 
 
 def test_build_prompt_text_prioritizes_user_prompt_not_reference_artists() -> None:
@@ -216,6 +242,49 @@ def test_select_playlist_tracks_fills_past_anchor_concentrated_top() -> None:
     assert artists & {"Soulive", "Pompeya", "Toro y Moi", "Unknown Mortal Orchestra"}
 
 
+def test_select_playlist_tracks_caps_anchor_share() -> None:
+    profile = MusicProfile(
+        playlist_title="Kitchen",
+        playlist_description="cozy",
+        primary_genres=["indie"],
+        mood_tags=["cozy"],
+        vocal_type="any",
+        reference_artists=["Parcels", "Khruangbin", "Men I Trust", "Camyo"],
+        search_queries=["indie cozy", "chill groove", "soft funk"],
+        target_track_count=10,
+    )
+    ranked: list[tuple[TrackCandidate, float]] = []
+    score = 0.95
+    for artist in ("Parcels", "Khruangbin", "Men I Trust", "Camyo"):
+        for index in range(5):
+            ranked.append((_track(f"{artist}-{index}", f"T{index}", artist), score))
+            score -= 0.001
+    for index in range(20):
+        ranked.append((_track(f"n{index}", f"N{index}", f"Other {index}"), score))
+        score -= 0.001
+
+    selected = select_playlist_tracks(ranked, profile)
+    assert len(selected) == 10
+    anchors = sum(
+        1
+        for track, _ in selected
+        if track.artists[0] in {"Parcels", "Khruangbin", "Men I Trust", "Camyo"}
+    )
+    assert anchors <= max_anchor_tracks(10)
+
+
+def test_select_playlist_tracks_drops_far_tail_false_positive() -> None:
+    profile = _profile(target_track_count=10)
+    ranked = [
+        (_track(str(i), f"Good {i}", f"Artist {i}", genre="synthwave"), 0.92 - i * 0.005)
+        for i in range(15)
+    ]
+    ranked.append((_track("bad", "Vlone", "Hauvy", genre="trap"), 0.70))
+    selected = select_playlist_tracks(ranked, profile)
+    assert all(track.id != "bad" for track, _ in selected)
+    assert len(selected) == 10
+
+
 def test_fallback_scores_prefers_genre_and_reference_artist() -> None:
     profile = _profile()
     candidates = [
@@ -315,3 +384,31 @@ async def test_scoring_service_batch_embedding_with_mock_model() -> None:
     assert ranked is not None
     assert ranked[0][0].id == "1"
     assert ranked[0][1] == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_scoring_service_rank_pool_merge_embeds_only_new(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ScoringService()
+    existing = [(_track("1", "Old", "A"), 0.9)]
+    new_tracks = [_track("2", "New", "B"), _track("1", "Dup", "A")]
+
+    def fake_rank(
+        profile: MusicProfile,
+        items: list[TrackCandidate],
+        user_prompt: str | None,
+    ) -> list[tuple[TrackCandidate, float]]:
+        assert [track.id for track in items] == ["2"]
+        return [(items[0], 0.95)]
+
+    monkeypatch.setattr(service, "_embedding_rank", fake_rank)
+    merged, method = await service.rank_pool_merge(
+        _profile(),
+        existing,
+        new_tracks,
+        user_prompt="test",
+    )
+    assert method == "embedding"
+    assert [track.id for track, _ in merged] == ["2", "1"]
+    assert merged[0][1] == pytest.approx(0.95)

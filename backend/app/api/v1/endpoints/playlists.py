@@ -1,12 +1,15 @@
+import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import CurrentSession, get_playlist_service
+from app.core.config import settings
 from app.core.exceptions import (
     ExportError,
     LLMError,
     NotFoundError,
+    PipelineTimeoutError,
     RetrievalError,
     ScoringError,
     YandexMusicError,
@@ -56,17 +59,28 @@ async def generate_playlist(
 ) -> PlaylistGenerateResponse:
     access_token = decrypt_token(session.encrypted_token)
     try:
-        return await service.generate(
-            prompt=body.prompt,
-            track_count=body.track_count,
-            instrumental_only=body.instrumental_only,
-            access_token=access_token,
-            login=session.user.login,
-            user_id=session.user_id,
-            exclude_artists=body.exclude_artists,
-            diversity=body.diversity,
-            source_id=body.source_id,
+        return await asyncio.wait_for(
+            service.generate(
+                prompt=body.prompt,
+                track_count=body.track_count,
+                instrumental_only=body.instrumental_only,
+                access_token=access_token,
+                login=session.user.login,
+                user_id=session.user_id,
+                exclude_artists=body.exclude_artists,
+                diversity=body.diversity,
+                source_id=body.source_id,
+            ),
+            timeout=settings.pipeline_timeout_sec,
         )
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=(
+                f"Playlist generation exceeded {settings.pipeline_timeout_sec}s "
+                f"(PIPELINE_TIMEOUT_SEC)"
+            ),
+        ) from PipelineTimeoutError(str(exc))
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
