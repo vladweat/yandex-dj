@@ -23,20 +23,131 @@ _GENERIC_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# Mood в search тянет SEO-title («Sad Rap», «Bones sad»). Не трогаем scene-adj
+# вроде dark/atmospheric/energetic — они нужны situational golden.
+_MOOD_BAIT_TOKENS = frozenset(
+    {
+        "sad",
+        "emotional",
+        "melancholic",
+        "melancholy",
+        "introspective",
+        "depressing",
+        "depressed",
+        "lonely",
+        "heartbreak",
+        "heartbreaking",
+        "cozy",
+        "chill",
+        "relaxing",
+        "calm",
+        "peaceful",
+        "romantic",
+        "moody",
+        "nostalgic",
+        "warm",
+        "dreamy",
+        "gentle",
+        "soft",
+        "sleepy",
+        "quiet",
+        "rainy",
+    }
+)
+
+_GENRE_BAIT_TOKENS = frozenset(
+    {
+        "rap",
+        "hip",
+        "hop",
+        "hiphop",
+        "trap",
+        "emo",
+        "punk",
+        "metal",
+        "jazz",
+        "pop",
+        "rock",
+        "rnb",
+        "soul",
+        "house",
+        "techno",
+        "ambient",
+        "lofi",
+        "indie",
+        "folk",
+        "blues",
+        "reggae",
+        "drill",
+        "phonk",
+        "electronic",
+        "electro",
+        "synth",
+        "wave",
+        "synthwave",
+        "retrowave",
+        "downtempo",
+        "instrumental",
+        "acoustic",
+        "alternative",
+        "edm",
+        "trance",
+        "dubstep",
+        "garage",
+        "grunge",
+        "cinematic",
+        "disco",
+        "funk",
+        "country",
+        "classical",
+        "piano",
+        "bossa",
+        "nova",
+        "chillhop",
+        "cloud",
+    }
+)
+
+
+def _query_tokens(query: str) -> list[str]:
+    normalized = query.lower().replace("lo-fi", "lofi").replace("hip-hop", "hiphop")
+    return re.findall(r"[a-z0-9$]+", normalized)
+
 
 def is_generic_search_query(query: str) -> bool:
     """SEO-фразы вроде «coding music» / «vibe for sleep» плохо работают в каталоге."""
     return bool(_GENERIC_PATTERNS.search(query.strip()))
 
 
+def is_mood_bait_search_query(query: str) -> bool:
+    """Artist+mood или mood+genre bait («Bones sad rap», «sad rap», «emotional trap»)."""
+    tokens = _query_tokens(query)
+    if len(tokens) < 2:
+        return False
+
+    mood_hits = [token for token in tokens if token in _MOOD_BAIT_TOKENS]
+    genre_hits = [token for token in tokens if token in _GENRE_BAIT_TOKENS]
+    if mood_hits and genre_hits:
+        return True
+    # «Bones sad», «$uicideboy$ emotional», «Men I Trust cozy»
+    if tokens[-1] in _MOOD_BAIT_TOKENS:
+        return True
+    return False
+
+
+def is_rejected_search_query(query: str) -> bool:
+    """Любая поисковая фраза, которую не стоит слать в каталог."""
+    return is_generic_search_query(query) or is_mood_bait_search_query(query)
+
+
 def refine_search_queries(profile: MusicProfile) -> MusicProfile:
-    """Убрать generic-фразы, дополнить жанрами и артистами."""
+    """Убрать generic/mood-bait фразы, дополнить артистами и жанрами (без mood)."""
     queries: list[str] = []
     seen: set[str] = set()
 
     def add(phrase: str) -> None:
         text = phrase.strip()
-        if not text or is_generic_search_query(text):
+        if not text or is_rejected_search_query(text):
             return
         key = text.lower()
         if key in seen:
@@ -52,8 +163,6 @@ def refine_search_queries(profile: MusicProfile) -> MusicProfile:
 
     for genre in profile.primary_genres:
         add(genre)
-        if profile.mood_tags:
-            add(f"{genre} {profile.mood_tags[0]}")
         if profile.vocal_type == "instrumental_only":
             add(f"{genre} instrumental")
 
@@ -62,13 +171,23 @@ def refine_search_queries(profile: MusicProfile) -> MusicProfile:
             add(f"{artist} {genre}")
 
     if len(queries) < 3:
-        for tag in profile.mood_tags:
-            add(tag)
+        for artist in profile.reference_artists:
+            add(f"artists like {artist}")
             if len(queries) >= 3:
                 break
 
     if not queries:
-        queries = list(profile.search_queries[:5])
+        # Последний шанс: сырые artist names без фильтра mood (имена сами по себе ок).
+        for artist in profile.reference_artists[:5]:
+            text = artist.strip()
+            if text and text.lower() not in seen:
+                seen.add(text.lower())
+                queries.append(text)
+
+    if not queries:
+        queries = [q for q in profile.search_queries[:5] if not is_rejected_search_query(q)]
+        if not queries:
+            queries = list(profile.search_queries[:5])
 
     return profile.model_copy(update={"search_queries": queries[:5]})
 
@@ -88,7 +207,7 @@ def expand_search_queries(
         if len(result) >= max_queries:
             return
         text = phrase.strip()
-        if not text or is_generic_search_query(text):
+        if not text or is_rejected_search_query(text):
             return
         key = text.lower()
         if key in used:
@@ -101,21 +220,21 @@ def expand_search_queries(
             add(artist)
         for genre in profile.primary_genres:
             add(genre)
-            for mood in profile.mood_tags[:2]:
-                add(f"{genre} {mood}")
             if profile.vocal_type == "instrumental_only":
                 add(f"{genre} instrumental")
         for artist in profile.reference_artists[:4]:
             for genre in profile.primary_genres[:2]:
                 add(f"{artist} {genre}")
     else:
-        for mood in profile.mood_tags:
-            for genre in profile.primary_genres:
-                add(f"{mood} {genre}")
         for artist in profile.reference_artists:
-            for mood in profile.mood_tags[:2]:
-                add(f"{artist} {mood}")
-        for artist in profile.reference_artists:
+            add(f"artists like {artist}")
             add(f"{artist} popular")
+        genres = profile.primary_genres
+        for index, genre in enumerate(genres):
+            for other in genres[index + 1 :]:
+                add(f"{genre} {other}")
+        for artist in profile.reference_artists[:3]:
+            for genre in profile.primary_genres[:2]:
+                add(f"{artist} {genre}")
 
     return result

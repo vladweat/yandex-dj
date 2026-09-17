@@ -1,7 +1,7 @@
 # Качество плейлистов — статус и handoff
 
 > **Для следующего агента.** Читать перед любыми правками retrieval/scoring/quality.  
-> Обновлено: 2026-09-17 — live-кейс named-artist (Bones); бэклог качества ниже; продукт — [PRODUCT.md](PRODUCT.md).
+> Обновлено: 2026-09-17 — Q1/Q2 ✅ (search hygiene + SEO Sad Rap); продукт — [PRODUCT.md](PRODUCT.md).
 
 ## TL;DR
 
@@ -16,8 +16,8 @@
 | `pool_stats` в ответе | ✅ `{raw, clean, selected}` |
 | Хвост / якоря / latency | ✅ gap, cap 60%, `rank_pool_merge`, `SCORING_EMBED_LIMIT=0` |
 | Situational golden | ✅ сильный cold-start (кухня/код/сон…) |
-| Named-artist + constraints | ⚠️ топ ок, хвост/diversity слабые — см. [кейс Bones](#live-кейс-named-artist-2026-09-17) |
-| Следующий фокус | Продукт — [PRODUCT.md](PRODUCT.md); пайплайн **только** с регрессом golden + пункты [бэклога качества](#бэклог-качества-после-mvp) |
+| Named-artist + constraints | ⚠️ топ ок; Q1/Q2 закрывают SEO-хвост; diversity/якоря — Q3 |
+| Следующий фокус | Продукт — [PRODUCT.md](PRODUCT.md); качество — **Q3** hard/soft anchors (+ golden); пайплайн только с регрессом golden |
 
 **Не ходить по кругу:** не добавлять regex под конкретный промпт/жанр.  
 **Граница качества (продукт):** «достаточно хорошо, чтобы слушать целиком», не редакционка.
@@ -97,10 +97,11 @@ user prompt
 3. Functional SEO: `vibe for`, `music for` у лейбла, `{context} music`
 4. Genre-as-title: `Upbeat Indie Pop`, `Indie Mindy`, стек 2+ жанров
 5. SEO-лейблы: `Vinyl Sounds`, `MoodMode`, `Waco Texas Metal`
-6. Mood-keyword artist: `Cozy'`, `COZY YiELDS`
-7. Mood-keyword title: `Cozy Forever`
-8. Reference в title без исполнителя (`Parcel` ≈ `Parcels`, `Nightcall - Kavinsky`)
-9. Точный match артистов (не `Parcel` ≈ `Parcels` в поле artist)
+6. Mood-keyword artist: `Cozy'`, `COZY YiELDS`, `Melancholy Mø`
+7. Mood-keyword title: `Cozy Forever`, `Sad Vibes`
+8. Mood/genre-as-title: `Sad Rap`, `Get Est Rap` (шум + жанр)
+9. Reference в title без исполнителя (`Parcel` ≈ `Parcels`, `Nightcall - Kavinsky`)
+10. Точный match артистов (не `Parcel` ≈ `Parcels` в поле artist)
 
 **Исключение:** Brian Eno «Music for Airports» — не фильтруется.
 
@@ -214,13 +215,13 @@ Situational golden (без имён) этим почти не бьётся — �
 
 | # | Доработка | Зачем | Риск |
 |---|-----------|-------|------|
-| **Q1** | Гигиена `search_queries` (LLM few-shot + post-validate): запрет `{artist}+mood/genre`, `{mood} rap`; предпочитать имя / сцена / «like X» | Убрать Musical Kay-класс из пула | Низкий, если kitchen queries не ломаем |
-| **Q2** | Structural SEO: title ≈ genre+mood (`Sad Rap`, `Get Est Rap`); mood-keyword artist (`Melancholy …`) — расширение уже существующих правил; при правке — C4 split `quality.py` | Хвост при `clean≫N` | Средний — нужен golden + live |
+| **Q1** | Гигиена `search_queries` (LLM few-shot + post-validate): запрет `{artist}+mood/genre`, `{mood} rap`; предпочитать имя / сцена / «like X» | Убрать Musical Kay-класс из пула | ✅ 2026-09-17 |
+| **Q2** | Structural SEO: title ≈ genre+mood (`Sad Rap`, `Get Est Rap`); mood-keyword artist (`Melancholy …`) — расширение уже существующих правил; при правке — C4 split `quality.py` | Хвост при `clean≫N` | ✅ 2026-09-17 (без C4 split) |
 | **Q3** | Hard vs soft anchors: из промпта / топ-2 = boost+slots; остальные refs — только retrieval | «Bones/$B + разнообразно» без стены из 15 треков | Средний — контракт `MusicProfile` / SPEC 4–8 refs |
 | **Q4** | Score plateau: при малом размахе топ-N предпочитать discovered/similar не-якорных; опц. demote lexical overlap title↔mood | Ghostemane остаётся, Token/SEO — нет | Выше — только + artist-named golden |
 | **Q5** | Constraints → опции: `exclude_languages` / map «разнообразн*» → `diversity=high` | Частый RU-каталожный pain | Новый контракт API/схемы |
 
-**Порядок внедрения:** Q1 → Q2 → Q3; Q4 после golden на named-artist; Q5 отдельным контрактом.
+**Порядок внедрения:** ~~Q1 → Q2~~ ✅ → Q3; Q4 после golden на named-artist; Q5 отдельным контрактом.
 
 **Не в приоритете качества:** ещё больший raw-пул; C4 ради рефакторинга; BPM/lyrics (PRODUCT P2); rewrite user prompt как основной рычаг.
 
@@ -250,6 +251,7 @@ Situational golden (без имён) этим почти не бьётся — �
 | Tail `max(..., score[N-1])` | Shortfall 19/25 при якорях в топе → убран |
 | Только больше regex | Пул не растёт, топ уже хорош |
 | Rewrite user prompt как фикс качества | Отклонён как основной рычаг (см. выше) |
+| genre+mood / artist+mood в `expand`/`refine` | Убрано → mood-bait filter + artist/genre only (Q1) |
 
 ---
 

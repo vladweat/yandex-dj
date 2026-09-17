@@ -12,7 +12,7 @@ from app.schemas.llm import MusicProfile
 from app.schemas.track import TrackCandidate
 from app.utils.quality import is_spurious_track
 from app.utils.scoring import select_playlist_tracks
-from app.utils.search_queries import is_generic_search_query
+from app.utils.search_queries import is_rejected_search_query
 
 GOLDEN_PROMPTS = {
     "kitchen": "под настроение пока варю макароны",
@@ -34,8 +34,8 @@ def _kitchen_profile() -> MusicProfile:
         vocal_type="any",
         reference_artists=["Khruangbin", "Men I Trust", "Parcels", "Angus & Julia Stone"],
         search_queries=[
-            "Khruangbin chill",
-            "Men I Trust cozy",
+            "Khruangbin",
+            "Men I Trust",
             "Parcels indie pop",
         ],
         target_track_count=25,
@@ -85,7 +85,7 @@ def _workout_profile() -> MusicProfile:
         vocal_type="any",
         reference_artists=["The Chemical Brothers", "Justice", "LCD Soundsystem", "Peggy Gou"],
         search_queries=[
-            "Chemical Brothers energetic",
+            "Chemical Brothers",
             "Justice electro",
             "Peggy Gou dance",
         ],
@@ -102,9 +102,9 @@ def _sleep_profile() -> MusicProfile:
         vocal_type="instrumental_only",
         reference_artists=["Brian Eno", "Max Richter", "Ólafur Arnalds", "Hammock"],
         search_queries=[
-            "Brian Eno ambient quiet",
-            "Max Richter sleep",
-            "Ólafur Arnalds piano soft",
+            "Brian Eno ambient",
+            "Max Richter neo classical",
+            "Ólafur Arnalds piano",
         ],
         target_track_count=25,
     )
@@ -136,9 +136,9 @@ def _rain_profile() -> MusicProfile:
         vocal_type="any",
         reference_artists=["Radiohead", "The National", "Phoebe Bridgers", "Slowdive"],
         search_queries=[
-            "Radiohead melancholy",
-            "The National rainy",
-            "Phoebe Bridgers sad indie",
+            "Radiohead",
+            "The National indie",
+            "Phoebe Bridgers indie folk",
         ],
         target_track_count=25,
     )
@@ -436,11 +436,11 @@ def test_golden_prompt_constants_match_frontend_samples() -> None:
     assert samples == list(GOLDEN_PROMPTS.values())
 
 
-def test_golden_search_queries_are_not_generic_seo() -> None:
+def test_golden_search_queries_are_not_rejected() -> None:
     for key, factory in _PROFILES.items():
         profile = factory()
         for query in profile.search_queries:
-            assert not is_generic_search_query(query), f"{key}: {query}"
+            assert not is_rejected_search_query(query), f"{key}: {query}"
 
 
 def _assert_golden_snapshot(key: str) -> None:

@@ -12,8 +12,10 @@ SYSTEM_PROMPT = """\
 - Пользователь может не назвать ни одного артиста — только настроение, ситуацию, быт
   («пока карю макароны», «грустный дождь», «в дорогу»). Тогда якори подбираешь сам.
 - search_queries: 3–5 фраз для поиска в каталоге (русский или английский)
-- search_queries: жанры, настроение, ситуация; имена артистов — если уместно
-  («Tycho ambient», «cozy kitchen jazz», «итальянская лёгкая музыка»)
+- search_queries: предпочитай имя артиста, «Artist genre», сцену/стиль
+  («Bones», «Tycho ambient», «cloud rap underground», «итальянская лёгкая музыка»)
+- search_queries: ЗАПРЕЩЕНО artist+mood и mood+genre bait —
+  не «Bones sad», «Bones sad rap», «sad rap», «emotional trap», «$uicideboy$ emotional»
 - search_queries: НЕ используй generic SEO-фразы — coding music, programming,
   study beats, workout playlist, music for, best tracks
 - reference_artists: 4–8 артистов-якорей для retrieval (подбираешь по вайбу, если пользователь
@@ -80,8 +82,8 @@ FEW_SHOT_EXAMPLES: list[tuple[str, MusicProfile]] = [
                 "Angus & Julia Stone",
             ],
             search_queries=[
-                "Khruangbin chill",
-                "Men I Trust cozy",
+                "Khruangbin",
+                "Men I Trust",
                 "Parcels indie pop",
             ],
             target_track_count=25,

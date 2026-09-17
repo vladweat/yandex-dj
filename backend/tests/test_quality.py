@@ -200,3 +200,28 @@ def test_spurious_mood_keyword_title() -> None:
 def test_spurious_genre_suffix_artist() -> None:
     track = TrackCandidate(id="p5", title="Micro Dust", artists=["Waco Texas Metal"])
     assert is_spurious_track(track, _profile()) is True
+
+
+def test_spurious_sad_rap_title() -> None:
+    track = TrackCandidate(id="p6", title="Sad Rap", artists=["Musical Kay"])
+    assert is_spurious_track(track, _profile()) is True
+
+
+def test_spurious_get_est_rap_title() -> None:
+    track = TrackCandidate(id="p7", title="Get Est Rap", artists=["DISTXRD"])
+    assert is_spurious_track(track, _profile()) is True
+
+
+def test_spurious_melancholy_mood_artist() -> None:
+    track = TrackCandidate(id="p8", title="White Kids", artists=["Melancholy Mø"])
+    assert is_spurious_track(track, _profile()) is True
+
+
+def test_valid_real_underground_rap_track() -> None:
+    track = TrackCandidate(id="p9", title="Kronol", artists=["Ghostemane"])
+    assert is_spurious_track(track, _profile()) is False
+
+
+def test_valid_bones_track() -> None:
+    track = TrackCandidate(id="p10", title="Suffer", artists=["BONES", "xavier wulf"])
+    assert is_spurious_track(track, _profile()) is False

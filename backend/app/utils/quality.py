@@ -165,6 +165,71 @@ _DESCRIPTOR_TOKENS = _GENRE_TOKENS | frozenset(
         "chillout",
         "laid",
         "back",
+        # Mood/SEO bait titles: «Sad Rap», «Emotional Trap»
+        "sad",
+        "emotional",
+        "melancholic",
+        "melancholy",
+        "introspective",
+        "depressing",
+        "depressed",
+        "lonely",
+        "heartbreak",
+        "heartbreaking",
+        "moody",
+        "nostalgic",
+        "atmospheric",
+        "dark",
+        "emo",
+        "est",
+        "get",
+        "top",
+        "hot",
+        "new",
+    }
+)
+
+_MOOD_KEYWORD_TOKENS = frozenset(
+    {
+        "cozy",
+        "chill",
+        "vibe",
+        "vibes",
+        "mood",
+        "sleep",
+        "relax",
+        "calm",
+        "lofi",
+        "sad",
+        "emotional",
+        "melancholic",
+        "melancholy",
+        "introspective",
+        "depressing",
+        "depressed",
+        "lonely",
+        "heartbreak",
+        "moody",
+        "nostalgic",
+        "atmospheric",
+    }
+)
+
+# Короткий SEO-шум перед жанром: «Get Est Rap», «Best Rap», «Top Trap».
+_GENRE_PREFIX_NOISE = frozenset(
+    {
+        "get",
+        "est",
+        "best",
+        "top",
+        "hot",
+        "new",
+        "real",
+        "true",
+        "pure",
+        "ultimate",
+        "fresh",
+        "free",
     }
 )
 
@@ -283,6 +348,14 @@ def is_genre_descriptor_title(title: str) -> bool:
     if len(tokens) == 2 and tokens[0] in _GENRE_TOKENS:
         return True
 
+    # «Sad Rap», «Emotional Trap» — mood/descriptor + жанр.
+    if (
+        len(tokens) == 2
+        and tokens[0] in _DESCRIPTOR_TOKENS
+        and tokens[1] in _GENRE_TOKENS
+    ):
+        return True
+
     genre_count = sum(1 for token in tokens if token in _GENRE_TOKENS)
     descriptor_count = sum(1 for token in tokens if token in _DESCRIPTOR_TOKENS)
 
@@ -296,6 +369,14 @@ def is_genre_descriptor_title(title: str) -> bool:
     # «Inspiring Indie Pop» — маркетинг + жанр, одно «чужое» слово максимум.
     non_descriptor = [token for token in tokens if token not in _DESCRIPTOR_TOKENS]
     if genre_count >= 1 and descriptor_count >= 2 and len(non_descriptor) <= 1 and len(tokens) <= 4:
+        return True
+
+    # «Get Est Rap» — шум + жанр в коротком title.
+    if (
+        2 <= len(tokens) <= 3
+        and tokens[-1] in _GENRE_TOKENS
+        and all(token in _GENRE_PREFIX_NOISE or token in _GENRE_TOKENS for token in tokens)
+    ):
         return True
 
     return False
@@ -360,22 +441,11 @@ def _title_resembles_reference(title: str, reference: str) -> bool:
 
 
 def is_mood_keyword_title(title: str) -> bool:
-    """SEO-title с mood-словом: «Cozy Forever», «Chill Vibes»."""
+    """SEO-title с mood-словом: «Cozy Forever», «Chill Vibes», «Sad Vibes»."""
     tokens = _title_tokens(title)
     if len(tokens) < 2:
         return False
-    mood_starters = {
-        "cozy",
-        "chill",
-        "vibe",
-        "vibes",
-        "mood",
-        "sleep",
-        "relax",
-        "calm",
-        "lofi",
-    }
-    return tokens[0] in mood_starters
+    return tokens[0] in _MOOD_KEYWORD_TOKENS
 
 
 def is_genre_suffix_artist(name: str) -> bool:
@@ -385,22 +455,11 @@ def is_genre_suffix_artist(name: str) -> bool:
 
 
 def is_mood_keyword_artist(name: str) -> bool:
-    """Артист-заглушка под mood-слово: Cozy', COZY YiELDS."""
+    """Артист-заглушка под mood-слово: Cozy', COZY YiELDS, Melancholy Mø."""
     tokens = _tokenize_name(name)
     if not tokens or len(tokens) > 3:
         return False
-    mood_names = {
-        "cozy",
-        "chill",
-        "vibe",
-        "vibes",
-        "mood",
-        "sleep",
-        "relax",
-        "calm",
-        "lofi",
-    }
-    return tokens[0] in mood_names
+    return tokens[0] in _MOOD_KEYWORD_TOKENS
 
 
 def _reference_in_title_only(track: TrackCandidate, profile: MusicProfile) -> bool:
