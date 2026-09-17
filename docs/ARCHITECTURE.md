@@ -8,7 +8,7 @@
 |--------|-----|-----------------|------|-------|
 | Prompt Understanding | `services/llm_service.py` | Декомпозиция NL-запроса | Промпт | `MusicProfile` |
 | Candidate Retrieval | `services/retrieval_service.py` | Сбор пула через API | `MusicProfile` | 150–300 `TrackCandidate` |
-| Scoring & Ranking | `services/scoring_service.py` + `utils/scoring.py` | Векторный скоринг | Промпт + кандидаты | `list[ScoredTrack]` |
+| Scoring & Ranking | `services/scoring_service.py` + `utils/scoring/` | Векторный скоринг | Промпт + кандидаты | `list[ScoredTrack]` |
 | Playlist Builder | `services/yandex_music_service.py` | Создание плейлиста | Топ-N треков | URL плейлиста |
 | Auth & Sessions | `services/` + `api/.../auth` | Device Flow, шифрование токенов | — | `session_id` |
 | API | `api/v1/endpoints/` | FastAPI endpoints | HTTP | JSON |

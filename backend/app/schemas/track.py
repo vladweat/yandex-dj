@@ -1,5 +1,10 @@
 from pydantic import BaseModel, Field
 
+# 0 = search; 1 = anchor/discovered tops; 2 = similar (apply_expansion_prior)
+RETRIEVAL_TIER_SEARCH = 0
+RETRIEVAL_TIER_ANCHOR = 1
+RETRIEVAL_TIER_SIMILAR = 2
+
 
 class TrackCandidate(BaseModel):
     """Нормализованный трек из каталога Яндекс Музыки."""
@@ -12,6 +17,7 @@ class TrackCandidate(BaseModel):
     version: str = ""
     duration_ms: int = 0
     available: bool = True
+    retrieval_tier: int = RETRIEVAL_TIER_SEARCH
 
     @property
     def artist_title_key(self) -> str:

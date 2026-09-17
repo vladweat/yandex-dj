@@ -41,12 +41,12 @@ from app.services.llm_service import LLMService
 from app.services.retrieval_service import RetrievalService, non_anchor_artists_from_ranked
 from app.services.scoring_service import ScoringService
 from app.services.yandex_music_service import YandexMusicService
-from app.utils.quality import artist_matches_reference, artist_tokens, is_spurious_track
 from app.utils.prompt_constraints import (
     ensure_hard_reference_artists,
     extract_prompt_constraints,
     filter_excluded_languages,
 )
+from app.utils.quality import artist_matches_reference, artist_tokens, is_spurious_track
 from app.utils.scoring import apply_library_artist_boost
 
 logger = logging.getLogger(__name__)
@@ -401,7 +401,7 @@ class PlaylistService:
             raise RetrievalError("No candidates found for the prompt")
         scoring_started = time.perf_counter()
         try:
-            selected, candidates, method = await self._score_with_feedback(
+            selected, candidates, method, shortfall = await self._score_with_feedback(
                 profile,
                 candidates,
                 prompt=prompt,
@@ -417,6 +417,12 @@ class PlaylistService:
 
         if not selected:
             raise ScoringError("Scoring returned no tracks")
+
+        if shortfall:
+            warnings.append(
+                f"shortfall: в плейлисте {len(selected)} из {track_count} треков "
+                "(не добирали слабый хвост)."
+            )
 
         clean_count = sum(1 for track in candidates if not is_spurious_track(track, profile))
         pool_stats = PlaylistPoolStats(
@@ -567,7 +573,7 @@ class PlaylistService:
         diversity: DiversityMode,
         library_artists: list[str] | None = None,
         exclude_languages: list[str] | None = None,
-    ) -> tuple[list[ScoredTrack], list[TrackCandidate], str]:
+    ) -> tuple[list[ScoredTrack], list[TrackCandidate], str, bool]:
         library = library_artists or []
         languages = list(exclude_languages or [])
         ranked_pool, method = await self._scoring.rank_pool(
@@ -581,12 +587,21 @@ class PlaylistService:
                 library,
                 boost=settings.library_artist_boost,
             )
-        selected = self._scoring.select(ranked_pool, profile, diversity=diversity)
+        selected, shortfall = self._scoring.select(
+            ranked_pool,
+            profile,
+            diversity=diversity,
+        )
         selected = filter_excluded_scored(selected, excludes)
         selected = filter_excluded_languages(selected, languages)
 
         if len(selected) >= profile.target_track_count:
-            return selected[: profile.target_track_count], candidates, method
+            return (
+                selected[: profile.target_track_count],
+                candidates,
+                method,
+                shortfall,
+            )
 
         feedback_artists = non_anchor_artists_from_ranked(
             ranked_pool,
@@ -599,7 +614,7 @@ class PlaylistService:
             if not any(artist_matches_reference(artist, excluded) for excluded in excludes)
         ]
         if not feedback_artists:
-            return selected, candidates, method
+            return selected, candidates, method, shortfall
 
         known_ids = {track.id for track, _ in ranked_pool}
         candidates = await self._retrieval.expand_from_artists(
@@ -613,7 +628,7 @@ class PlaylistService:
         candidates = filter_excluded_languages(candidates, languages)
         new_candidates = [track for track in candidates if track.id not in known_ids]
         if not new_candidates:
-            return selected, candidates, method
+            return selected, candidates, method, shortfall
 
         ranked_pool, method = await self._scoring.rank_pool_merge(
             profile,
@@ -627,10 +642,19 @@ class PlaylistService:
                 library,
                 boost=settings.library_artist_boost,
             )
-        selected = self._scoring.select(ranked_pool, profile, diversity=diversity)
+        selected, shortfall = self._scoring.select(
+            ranked_pool,
+            profile,
+            diversity=diversity,
+        )
         selected = filter_excluded_scored(selected, excludes)
         selected = filter_excluded_languages(selected, languages)
-        return selected[: profile.target_track_count], candidates, method
+        return (
+            selected[: profile.target_track_count],
+            candidates,
+            method,
+            shortfall,
+        )
 
     async def _export(
         self,

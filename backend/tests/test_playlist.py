@@ -189,7 +189,7 @@ async def test_playlist_service_generate_pipeline() -> None:
     candidate = TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"])
     scoring = AsyncMock()
     scoring.rank_pool = AsyncMock(return_value=([(candidate, 0.924)], "embedding"))
-    scoring.select = MagicMock(return_value=SAMPLE_RANKED)
+    scoring.select = MagicMock(return_value=(SAMPLE_RANKED, False))
 
     yandex = AsyncMock()
     mock_client = MagicMock()
@@ -276,7 +276,7 @@ async def test_playlist_service_use_library_expands_and_persists_flag() -> None:
             "embedding",
         )
     )
-    scoring.select = MagicMock(return_value=SAMPLE_RANKED)
+    scoring.select = MagicMock(return_value=(SAMPLE_RANKED, False))
 
     yandex = AsyncMock()
     yandex.fetch_library_artist_names = AsyncMock(return_value=["Library Artist", "Other"])
@@ -329,7 +329,7 @@ async def test_playlist_service_use_library_fetch_failure_adds_warning() -> None
     candidate = TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"])
     scoring = AsyncMock()
     scoring.rank_pool = AsyncMock(return_value=([(candidate, 0.924)], "embedding"))
-    scoring.select = MagicMock(return_value=SAMPLE_RANKED)
+    scoring.select = MagicMock(return_value=(SAMPLE_RANKED, False))
 
     yandex = AsyncMock()
     yandex.fetch_library_artist_names = AsyncMock(side_effect=RuntimeError("yandex down"))
@@ -379,11 +379,14 @@ async def test_playlist_service_feedback_uses_rank_pool_merge() -> None:
     scoring.rank_pool_merge = AsyncMock(return_value=([(second, 0.95), (first, 0.9)], "embedding"))
     scoring.select = MagicMock(
         side_effect=[
-            [ScoredTrack.from_candidate(first, 0.9)],
-            [
-                ScoredTrack.from_candidate(second, 0.95),
-                ScoredTrack.from_candidate(first, 0.9),
-            ],
+            ([ScoredTrack.from_candidate(first, 0.9)], False),
+            (
+                [
+                    ScoredTrack.from_candidate(second, 0.95),
+                    ScoredTrack.from_candidate(first, 0.9),
+                ],
+                False,
+            ),
         ]
     )
 
@@ -451,7 +454,7 @@ async def test_playlist_service_source_id_skips_llm() -> None:
     candidate = TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"])
     scoring = AsyncMock()
     scoring.rank_pool = AsyncMock(return_value=([(candidate, 0.924)], "embedding"))
-    scoring.select = MagicMock(return_value=SAMPLE_RANKED)
+    scoring.select = MagicMock(return_value=(SAMPLE_RANKED, False))
     yandex = AsyncMock()
     yandex.init_client.return_value = MagicMock()
     yandex.export_playlist.return_value = "https://music.yandex.ru/users/testuser/playlists/1004"
@@ -789,7 +792,7 @@ async def test_playlist_service_quota_skips_regen() -> None:
     candidate = TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"])
     scoring = AsyncMock()
     scoring.rank_pool = AsyncMock(return_value=([(candidate, 0.9)], "embedding"))
-    scoring.select = MagicMock(return_value=SAMPLE_RANKED)
+    scoring.select = MagicMock(return_value=(SAMPLE_RANKED, False))
     yandex = AsyncMock()
     yandex.init_client.return_value = MagicMock()
     yandex.export_playlist.return_value = "https://music.yandex.ru/users/u/playlists/1"

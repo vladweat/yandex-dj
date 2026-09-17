@@ -285,7 +285,7 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 
 | # | Что | Где | Зачем |
 |---|-----|-----|--------|
-| A1 | ~~Embedding false positives в хвосте~~ | `utils/scoring.py` | ✅ `filter_by_top_median_gap` |
+| A1 | ~~Embedding false positives в хвосте~~ | `utils/scoring/floors.py` | ✅ `filter_by_top_median_gap` |
 | A2 | ~~Cap якорей ~60% плейлиста~~ | `select_playlist_tracks` | ✅ `max_anchor_tracks` |
 | A3 | ~~Double-embed на feedback~~ | `rank_pool_merge` | ✅ encode только новых |
 | A4 | ~~`SCORING_EMBED_LIMIT` drift~~ | `.env` / config | ✅ `0` везде |

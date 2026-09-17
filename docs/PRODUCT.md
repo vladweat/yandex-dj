@@ -50,7 +50,7 @@
 |------|---------|
 | **Primary** | Доля пользователей с ≥1 повторным действием за 7 дней (реген / новая генерация) |
 | **Quality proxy** | Like/dislike в UI; listen/skips в Яндексе — если API даст |
-| **Guardrail** | p50/p95 latency; `clean ≥ 40`; `selected == N` на golden |
+| **Guardrail** | p50/p95 latency; `clean ≥ 40`; `selected == N` на situational golden (named-artist full_n + like — см. [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) § Like/dislike) |
 | **Secondary growth** | Шаринг ссылки / `?prompt=` из галереи |
 
 Граница качества: **«достаточно хорошо, чтобы слушать целиком»**, не редакционный уровень. Не раздувать regex-войну под промпт/жанр.

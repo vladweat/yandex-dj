@@ -373,7 +373,7 @@ def references_in_artists(track: TrackCandidate, profile: MusicProfile) -> bool:
 
 
 def hard_anchor_names(profile: MusicProfile) -> list[str]:
-    """Hard-якоря для boost/diversity; fallback — все reference_artists (legacy)."""
+    """Hard-якоря для boost/diversity; если список пуст — все reference_artists профиля."""
     hard = [name.strip() for name in profile.hard_reference_artists if name.strip()]
     if hard:
         return hard

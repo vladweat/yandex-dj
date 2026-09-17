@@ -20,6 +20,7 @@ from app.utils.scoring import (
     max_tracks_per_artist,
     merge_embedding_rank,
     select_playlist_tracks,
+    select_playlist_with_meta,
 )
 
 
@@ -243,7 +244,7 @@ def test_plateau_prefers_non_hard_anchor_in_bucket() -> None:
     assert all(track.artists[0] != "Kavinsky" for track, _ in reordered[:-1])
 
 
-def test_select_playlist_tracks_sorted_by_score_after_fill() -> None:
+def test_select_playlist_tracks_head_then_expansion_order() -> None:
     profile = _profile(target_track_count=4)
     ranked = [
         (_track("1", "A1", "Khruangbin"), 0.9),
@@ -254,8 +255,11 @@ def test_select_playlist_tracks_sorted_by_score_after_fill() -> None:
         (_track("6", "C1", "Other"), 0.7),
     ]
     selected = select_playlist_tracks(ranked, profile)
-    scores = [score for _, score in selected]
-    assert scores == sorted(scores, reverse=True)
+    head_scores = [score for _, score in selected[:2]]
+    tail_scores = [score for _, score in selected[2:]]
+    assert head_scores == sorted(head_scores, reverse=True)
+    assert tail_scores == sorted(tail_scores, reverse=True)
+    assert min(head_scores) >= max(tail_scores)
 
 
 def test_select_playlist_tracks_high_diversity_limits_per_artist() -> None:
@@ -454,6 +458,50 @@ def test_apply_library_artist_boost_promotes_library_artist() -> None:
     boosted = apply_library_artist_boost(ranked, ["My Fav Artist"], boost=0.05)
     assert boosted[0][0].id == "2"
     assert boosted[0][1] == pytest.approx(0.89)
+
+
+def test_two_phase_head_lock_preserves_top_five() -> None:
+    profile = _profile(target_track_count=25).model_copy(
+        update={
+            "hard_reference_artists": ["Kavinsky"],
+            "reference_artists": ["Kavinsky", "Perturbator", "Gunship", "FM-84"],
+        }
+    )
+    ranked = [
+        (_track("1", "A", "Kavinsky"), 0.90),
+        (_track("2", "B", "Ghostemane"), 0.89),
+        (_track("3", "C", "Other"), 0.88),
+        (_track("4", "D", "Else"), 0.87),
+        (_track("5", "E", "Band"), 0.86),
+    ]
+    ranked += [
+        (_track(f"x{i}", f"Tail {i}", f"Filler {i}"), 0.5) for i in range(40)
+    ]
+    before = select_playlist_tracks(ranked[:5], profile)
+    after = select_playlist_tracks(ranked, profile)
+    assert [track.id for track, _ in after[:5]] == [track.id for track, _ in before[:5]]
+
+
+def test_strict_expansion_shortfall_on_flat_large_pool() -> None:
+    profile = _profile(target_track_count=25).model_copy(
+        update={
+            "hard_reference_artists": ["Kavinsky"],
+            "reference_artists": ["Kavinsky", "Perturbator", "Gunship", "FM-84"],
+        }
+    )
+    ranked = [
+        (_track(f"a{i}", f"A{i}", "Kavinsky"), 0.88 - i * 0.0005) for i in range(8)
+    ]
+    ranked += [
+        (_track(f"b{i}", f"B{i}", "Perturbator"), 0.87 - i * 0.0005) for i in range(8)
+    ]
+    ranked += [
+        (_track(f"j{i}", f"Junk {i}", f"Random {i}"), 0.62 - i * 0.01) for i in range(120)
+    ]
+    meta = select_playlist_with_meta(ranked, profile)
+    assert meta.shortfall
+    assert len(meta.tracks) < 25
+    assert all(track.id.startswith("j") is False for track, _ in meta.tracks)
 
 
 def test_merge_embedding_rank_uses_only_embedded_scores() -> None:

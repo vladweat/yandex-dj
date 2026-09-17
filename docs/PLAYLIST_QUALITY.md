@@ -1,7 +1,7 @@
 # Качество плейлистов — статус и handoff
 
 > **Для следующего агента.** Читать перед любыми правками retrieval/scoring/quality.  
-> Обновлено: 2026-09-17 — Q1–Q5 ✅; следующий план качества — **хвост без порчи топа** (Q6–Q8 ниже).
+> Обновлено: 2026-09-17 — Q1–Q8 ✅; фокус качества — регресс golden + live named-artist; продукт — [PRODUCT.md](PRODUCT.md).
 
 ## TL;DR
 
@@ -16,13 +16,13 @@
 | `pool_stats` в ответе | ✅ `{raw, clean, selected}` |
 | Хвост / якоря / latency | ✅ gap, cap 60% hard-якорей, `rank_pool_merge`; export batch change |
 | Situational golden | ✅ сильный cold-start (кухня/код/сон…) |
-| Named-artist + constraints | ✅ Q1–Q5 + structural; **хвост** — серый filler при `full_n` (см. Q6+) |
-| Следующий фокус качества | **[Q6–Q8: хвост без порчи топа](#план-q6q8--хвост-без-порчи-топа)**; продукт — [PRODUCT.md](PRODUCT.md) |
+| Named-artist + constraints | ✅ Q1–Q8: two-phase select, shortfall warning, expansion prior |
+| Следующий фокус качества | Live Bones-класс + метрики `shortfall`; продукт — [PRODUCT.md](PRODUCT.md) |
 
 **Не ходить по кругу:** не добавлять regex под конкретный промпт/жанр.  
 **Граница качества (продукт):** «достаточно хорошо, чтобы слушать целиком», не редакционка.
 
-**Краткий диагноз (2026-09-17):** входы в пул (queries / SEO / hard-soft / язык) улучшены. Live named-artist: **топ узкий и чище**, хвост чаще нейтральный filler — из‑за `selected == N` + плоский cosine + soft tail floor. Следующий ROI — **двухфазный select / shortfall**, не ещё фильтры под жанр.
+**Краткий диагноз (2026-09-17):** Q6–Q8 в коде: lock head (10–12), expansion с жёстким полом на больших плоских пулах, `warnings` shortfall, `retrieval_tier` + prior в expansion. Situational golden — `full_n`; named-artist при плоском 250+ clean — возможен shortfall вместо мусорного хвоста.
 
 ---
 
@@ -68,7 +68,7 @@ user prompt
     ↓ pre-filter (quality.py — универсальный SEO/мусор)
     ↓ embedding (prompt + description + genres + mood; БЕЗ reference_artists в query)
     ↓ +0.03 hard-anchor boost (`hard_reference_artists`; soft refs — только retrieval)
-    ↓ select: gap → mood-demote → plateau reorder → elbow → soft/tail fill → diversity
+    ↓ select: gap → mood-demote → **phase A head lock** → **phase B expansion** (plateau/prior) → shortfall
     ↓ diversity (2/3 обычно, 3 hard-якорям, 5 hard в tail) + cap hard-якорей ~60%
     ↓ prompt constraints: `разнообразн*` → diversity=high; `исключи русск*` → drop кириллицы
     ↓ [если selected < N] feedback: tops+similar лучших не-якорных → incremental re-score
@@ -82,9 +82,10 @@ user prompt
 | `backend/app/services/llm_prompts.py` | Системный промпт, few-shot «макароны» / named-artist |
 | `backend/app/services/retrieval_service.py` | Пул: search, tops, similar, discovered, feedback expand |
 | `backend/app/utils/quality.py` | Pre-filter: SEO, genre-as-title, mood-keyword, hard helpers |
-| `backend/app/utils/scoring.py` | Embedding query, elbow, fill, diversity, hard boost, plateau |
+| `backend/app/utils/scoring/` | Embedding, floors, diversity, rank adjustments, two-phase select |
+| `backend/app/utils/mood_tokens.py` | Общий mood-лексикон (search bait + title demote) |
 | `backend/app/utils/search_queries.py` | Блок generic SEO + mood-bait search-фраз |
-| `backend/app/utils/prompt_constraints.py` | Q3/Q5: hard anchors, diversity hint, exclude_languages |
+| `backend/app/utils/prompt_constraints.py` | Hard anchors из промпта, diversity hint, exclude_languages |
 | `backend/app/core/config.py` | `min_clean_candidates`, `discovered_*`, `feedback_*` |
 | `frontend/src/features/playlist/*` | Форма генерации + результат для ручного теста |
 
@@ -192,7 +193,64 @@ user prompt
 | Нет явных RU-артистов | «разнообразным» не → `diversity=high`; «исключи русские» не first-class |
 | | Flat tail: lexical SEO и коллизия имён (Krayzie Bone ≠ BONES) |
 
-**Вердикт:** профиль и топ по смыслу верные; «всё верно» — нет. Слушать ~1–12/15; дальше шум. При жирном clean система *могла* выбрать лучше.
+**Вердикт (до Q6–Q8):** профиль и топ по смыслу верные; «всё верно» — нет. Слушать ~1–12/15; дальше шум. При жирном clean система *могла* выбрать лучше.
+
+### Вердикт после Q6–Q8 + live (2026-09-17, тот же класс промпта)
+
+Повторный прогон: `raw≈290`, `clean≈168`, **full_n=25** — якоря (BONES, $uicideboy$, Ghostemane, Night Lovell, Xavier Wulf в хвосте), без SEO-класса `Sad Rap` / mood-лейблов; хвост — phonk/underground-соседи (Ghilliewood, PHONKUDO, …), scores ~0.83–0.80.
+
+**Субъективная оценка (автор продукта):** плейлист звучит как задумано, **включая конец** — расширение сцены, а не «мусор до N».
+
+| Инженерная эвристика | Продуктовый вывод |
+|----------------------|-------------------|
+| Плоский cosine, одиночные артисты в хвосте | Не автоматически провал; для **named-artist + mood** хвост может быть широким и всё равно ок |
+| Цель «18–20 без filler» (shortfall) | **Не** крутим под один удачный full_n — shortfall остаётся для случаев, когда добор реально грязный (см. Q6) |
+| Метрика качества | **Like/dislike** на таких прогонах важнее таблицы scores на `/lab` |
+
+**Зафиксировано:** для named-artist **не** ужесточать пайплайн ради «убрать phonk-одиночек», пока dislike/жалобы на хвост не станут частыми. Situational golden по-прежнему: `selected==25`, без SEO в топе.
+
+---
+
+## Like / dislike — как работает и влияет на генерацию
+
+### Что это
+
+Оценка **уже сохранённой** генерации (конкретный плейлист в Яндексе + треки в ответе API), не отдельный промпт.
+
+| | |
+|---|---|
+| **UI** | Кнопки на `/` после генерации (не на `/lab` как основной UX) |
+| **API** | `PATCH /api/v1/playlists/{generation_id}/feedback` — body `{ "value": "like" \| "dislike" \| null }` |
+| **БД** | `playlist_generations.feedback`: `1` = like, `-1` = dislike, `NULL` = снято; `feedback_at` |
+| **История** | В списке генераций поле `feedback` возвращается вместе с промптом и ссылкой |
+
+Повторный клик по той же кнопке или отправка `null` снимает оценку (toggle).
+
+### Влияет ли на следующую генерацию?
+
+**Сейчас — нет.** Like/dislike **не** читаются в пайплайне `LLM → retrieval → scoring → export`. Новый промпт и «Ещё вариант» (`source_id`) **не** смотрят на прошлые like/dislike.
+
+Не путать с **`_score_with_feedback`** в коде — это **внутренний** добор кандидатов в *той же* генерации, если после первого scoring `selected < N`: топ не-якорных артистов → `expand_from_artists` → `rank_pool_merge`. К пользовательскому like это не относится.
+
+### Что влияет на персонализацию сегодня
+
+| Механизм | Когда | Эффект |
+|----------|--------|--------|
+| **`use_library`** (опция генерации) | Явно включено | Лайки/недавнее из Яндекса → seed retrieval + `library_artist_boost` в scoring |
+| **Like/dislike** | После факта | Только аналитика и история (см. ниже) |
+
+План из [PRODUCT.md](PRODUCT.md): listening graph / вкус по лайкам — отдельный следующий скачок; UI-feedback пока **quality proxy** для решений по пайплайну.
+
+### Зачем ставить like на удачный named-artist
+
+1. **Метрики:** `like_rate` / `dislike_rate` в `docs/analytics/product_metrics.sql` и `GET /api/v1/metrics/product` — доля оценённых генераций и баланс.
+2. **Приоритеты:** серия like на full_n с «широким» хвостом → не резать shortfall агрессивно; рост dislike на хвосте → снова смотреть expansion (Q6–Q8), не regex под жанр.
+3. **Связка с warnings:** если есть `shortfall` в `warnings`, like/dislike показывает, устраивает ли пользователя укороченный список.
+
+### Guardrail в метриках
+
+- **CI / golden:** situational — по-прежнему `selected == N` в `test_golden_prompts.py`.
+- **Продукт:** primary — return-7d; **quality proxy** — like/dislike; full_n — guardrail, не единственный критерий «хорошо» для named-artist.
 
 ---
 
@@ -224,7 +282,7 @@ Situational golden (без имён) этим почти не бьётся — �
 | **Q4** | Score plateau: при малом размахе топ-N предпочитать discovered/similar не-якорных; опц. demote lexical overlap title↔mood | Ghostemane остаётся, Token/SEO — нет | ✅ plateau reorder + mood demote |
 | **Q5** | Constraints → опции: `exclude_languages` / map «разнообразн*» → `diversity=high` | Частый RU-каталожный pain | ✅ `prompt_constraints.py` + API field |
 
-**Порядок внедрения:** ~~Q1 → Q2 → Q3 → Q4 → Q5~~ ✅. Дальше — [Q6–Q8](#план-q6q8--хвост-без-порчи-топа).
+**Порядок внедрения:** ~~Q1 → … → Q8~~ ✅.
 
 **Не в приоритете качества:** ещё больший raw-пул; C4 ради рефакторинга; BPM/lyrics (PRODUCT P2); rewrite user prompt как основной рычаг; global жёсткий `min_score` (режет situational golden).
 
@@ -250,9 +308,9 @@ Situational golden (без имён) этим почти не бьётся — �
 
 | # | Доработка | Зачем | Как не убить топ | Риск |
 |---|-----------|-------|------------------|------|
-| **Q6** | **Shortfall вместо dirty fill** | Не добирать 50 Cent / random filler до 25 | Резать только когда gap до N большой; kitchen golden — по-прежнему стремиться к `full_n` при `clean≫N` | Средний — ослабить CI/`full_n` alert для named-artist; warning `shortfall` |
-| **Q7** | **Two-phase select** | Хвост = расширение сцены от ядра | Phase A lock; Phase B: similar-to-selected / discovered non-hard; пол `median(top-K) − δ` жёстче tail `−0.04` | Средний — регресс golden; тесты на head invariance |
-| **Q8** | **Source prior + isolate demote (только fill)** | Similar-от-якоря > «только search»; артист без соседей в пуле — штраф в Phase B | Не применять demote к Phase A | Ниже, если только expansion |
+| **Q6** | **Shortfall вместо dirty fill** | Не добирать 50 Cent / random filler до 25 | Резать только когда gap до N большой; kitchen golden — по-прежнему стремиться к `full_n` при `clean≫N` | ✅ `select_playlist_with_meta` + warning в API |
+| **Q7** | **Two-phase select** | Хвост = расширение сцены от ядра | Phase A lock; Phase B: similar-to-selected / discovered non-hard; пол `median(top-K) − δ` жёстче tail `−0.04` | ✅ `compute_head_lock_size`, head+expansion order |
+| **Q8** | **Source prior + isolate demote (только fill)** | Similar-от-якоря > «только search»; артист без соседей в пуле — штраф в Phase B | Не применять demote к Phase A | ✅ `retrieval_tier` + `apply_expansion_prior` |
 
 **Дополнительно (в рамках Q7):**  
 - Plateau / prefer-non-anchor — **только Phase B** (сейчас может слегка двигать середину).  
