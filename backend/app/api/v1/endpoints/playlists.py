@@ -100,6 +100,7 @@ async def generate_playlist(
                 login=session.user.login,
                 user_id=session.user_id,
                 exclude_artists=body.exclude_artists,
+                exclude_languages=body.exclude_languages,
                 diversity=body.diversity,
                 use_library=body.use_library,
                 source_id=body.source_id,

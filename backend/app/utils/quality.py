@@ -323,6 +323,22 @@ def references_in_artists(track: TrackCandidate, profile: MusicProfile) -> bool:
     return False
 
 
+def hard_anchor_names(profile: MusicProfile) -> list[str]:
+    """Hard-якоря для boost/diversity; fallback — все reference_artists (legacy)."""
+    hard = [name.strip() for name in profile.hard_reference_artists if name.strip()]
+    if hard:
+        return hard
+    return list(profile.reference_artists)
+
+
+def hard_references_in_artists(track: TrackCandidate, profile: MusicProfile) -> bool:
+    artists = artist_tokens(track)
+    for ref in hard_anchor_names(profile):
+        if any(artist_matches_reference(artist, ref.lower()) for artist in artists):
+            return True
+    return False
+
+
 def is_arrangement(track: TrackCandidate) -> bool:
     haystack = f"{track.title} {track.version}".strip()
     return bool(_ARRANGEMENT_MARKERS.search(haystack))

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 from app.schemas.llm import MusicProfile
 from app.schemas.track import TrackCandidate
@@ -9,7 +11,7 @@ from app.utils.quality import (
     artist_matches_reference,
     artist_tokens,
     diversity_artist_keys,
-    references_in_artists,
+    hard_references_in_artists,
 )
 
 REFERENCE_ANCHOR_BOOST = 0.03
@@ -20,11 +22,35 @@ HIGH_DIVERSITY_MAX_PER_ARTIST = 1
 HIGH_DIVERSITY_ANCHOR_MAX = 2
 HIGH_DIVERSITY_ANCHOR_FILL = 3
 TAIL_SCORE_DROP = 0.04
-# Доля плейлиста на reference artists (суммарно, не per-artist).
+# Доля плейлиста на hard-якоря (суммарно, не per-artist).
 ANCHOR_PLAYLIST_CAP_RATIO = 0.6
 # Хвост далеко от медианы топ-K — типичный embedding false positive (Hauvy и т.п.).
 TOP_MEDIAN_WINDOW = 10
 TOP_MEDIAN_MAX_GAP = 0.15
+# При близких score в плоском топе можно предпочесть не-якорных артистов.
+PLATEAU_SCORE_SPAN = 0.05
+PLATEAU_SCORE_BUCKET = 0.01
+MOOD_TITLE_DEMOTE = 0.015
+
+_MOOD_DEMOTE_TOKENS = frozenset(
+    {
+        "sad",
+        "emotional",
+        "melancholic",
+        "melancholy",
+        "introspective",
+        "depressing",
+        "depressed",
+        "lonely",
+        "heartbreak",
+        "cozy",
+        "chill",
+        "relaxing",
+        "calm",
+        "moody",
+        "nostalgic",
+    }
+)
 
 
 def build_prompt_text(profile: MusicProfile, user_prompt: str | None = None) -> str:
@@ -52,7 +78,7 @@ def max_tracks_per_artist(playlist_size: int, *, configured: int | None = None) 
 
 
 def max_anchor_tracks(playlist_size: int) -> int:
-    """Суммарный cap якорей (~60% плейлиста)."""
+    """Суммарный cap hard-якорей (~60% плейлиста)."""
     return max(1, int(playlist_size * ANCHOR_PLAYLIST_CAP_RATIO))
 
 
@@ -119,6 +145,67 @@ def filter_by_top_median_gap(
     return [(track, score) for track, score in ranked if score >= floor]
 
 
+def apply_mood_title_demote(
+    ranked: list[tuple[TrackCandidate, float]],
+    profile: MusicProfile,
+    *,
+    penalty: float = MOOD_TITLE_DEMOTE,
+) -> list[tuple[TrackCandidate, float]]:
+    """Q4: слегка понизить title с lexical overlap к mood_tags (Sad/Emotional…)."""
+    if penalty <= 0 or not ranked:
+        return ranked
+    profile_mood = {
+        token
+        for tag in profile.mood_tags
+        for token in re.findall(r"[a-z0-9]+", tag.lower())
+    }
+    demote_tokens = profile_mood & _MOOD_DEMOTE_TOKENS
+    if not demote_tokens:
+        return ranked
+
+    adjusted: list[tuple[TrackCandidate, float]] = []
+    for track, score in ranked:
+        title_tokens = set(re.findall(r"[a-z0-9]+", track.title.lower()))
+        if title_tokens & demote_tokens:
+            score = max(0.0, score - penalty)
+        adjusted.append((track, score))
+    adjusted.sort(key=lambda item: item[1], reverse=True)
+    return adjusted
+
+
+def is_score_plateau(
+    ranked: list[tuple[TrackCandidate, float]],
+    limit: int,
+    *,
+    span: float = PLATEAU_SCORE_SPAN,
+) -> bool:
+    if len(ranked) < max(limit, 2):
+        return False
+    top = ranked[0][1]
+    edge = ranked[min(limit, len(ranked)) - 1][1]
+    return (top - edge) < span
+
+
+def prefer_non_anchors_on_plateau(
+    ranked: list[tuple[TrackCandidate, float]],
+    profile: MusicProfile,
+    *,
+    limit: int | None = None,
+) -> list[tuple[TrackCandidate, float]]:
+    """Q4: при плоском топе в близких score-корзинах не-hard-якоря раньше якорей."""
+    target = limit if limit is not None else profile.target_track_count
+    if not is_score_plateau(ranked, target):
+        return ranked
+
+    def sort_key(item: tuple[TrackCandidate, float]) -> tuple[int, int, float]:
+        track, score = item
+        bucket = int(round(score / PLATEAU_SCORE_BUCKET))
+        is_hard = 1 if hard_references_in_artists(track, profile) else 0
+        return (-bucket, is_hard, -score)
+
+    return sorted(ranked, key=sort_key)
+
+
 def apply_diversity_filter(
     ranked: list[tuple[TrackCandidate, float]],
     *,
@@ -150,7 +237,7 @@ def apply_diversity_filter(
         keys = diversity_artist_keys(track)
         if not keys:
             keys = [track.title.lower()]
-        is_anchor = profile is not None and references_in_artists(track, profile)
+        is_anchor = profile is not None and hard_references_in_artists(track, profile)
         if is_anchor and max_anchor_total is not None and anchors_used >= max_anchor_total:
             continue
         per_artist_limit = max_per_artist
@@ -199,7 +286,9 @@ def _append_diverse_tracks(
     for track, _ in selected:
         for key in diversity_artist_keys(track):
             artist_counts[key] = artist_counts.get(key, 0) + 1
-    anchors_used = sum(1 for track, _ in selected if references_in_artists(track, profile))
+    anchors_used = sum(
+        1 for track, _ in selected if hard_references_in_artists(track, profile)
+    )
 
     extra = apply_diversity_filter(
         ranked,
@@ -242,7 +331,7 @@ def select_playlist_tracks(
     diversity: str = "normal",
     max_per_artist: int | None = None,
 ) -> list[tuple[TrackCandidate, float]]:
-    """Топ-N: gap → elbow + diversity; fill до limit с cap якорей ~60%."""
+    """Топ-N: gap → elbow + diversity; fill до limit с cap hard-якорей ~60%."""
     limit = profile.target_track_count
     if not ranked:
         return []
@@ -250,6 +339,9 @@ def select_playlist_tracks(
     ranked = filter_by_top_median_gap(ranked)
     if not ranked:
         return []
+
+    ranked = apply_mood_title_demote(ranked, profile)
+    ranked = prefer_non_anchors_on_plateau(ranked, profile, limit=limit)
 
     scores = [score for _, score in ranked]
     anchor_cap = max_anchor_tracks(limit)
@@ -309,10 +401,10 @@ def apply_reference_anchor_boost(
     ranked: list[tuple[TrackCandidate, float]],
     profile: MusicProfile,
 ) -> list[tuple[TrackCandidate, float]]:
-    """Мягкий буст якорным артистам из retrieval (не в embedding-запросе)."""
+    """Мягкий буст hard-якорным артистам (soft refs — без boost)."""
     boosted: list[tuple[TrackCandidate, float]] = []
     for track, score in ranked:
-        if references_in_artists(track, profile):
+        if hard_references_in_artists(track, profile):
             score = min(1.0, score + REFERENCE_ANCHOR_BOOST)
         boosted.append((track, score))
     boosted.sort(key=lambda item: item[1], reverse=True)
@@ -374,6 +466,7 @@ def fallback_scores(
     candidates: list[TrackCandidate],
 ) -> list[tuple[TrackCandidate, float]]:
     genres = {genre.lower() for genre in profile.primary_genres}
+    # Hard + soft refs помогают fallback-ранжированию.
     ref_artists = {artist.lower() for artist in profile.reference_artists}
     pool_size = max(len(candidates), 1)
 
@@ -390,6 +483,8 @@ def fallback_scores(
             for ref in ref_artists
         ):
             score += 0.5
+        if hard_references_in_artists(track, profile):
+            score += 0.15
         score += 0.01 * (pool_size - index) / pool_size
         scored.append((track, score))
 

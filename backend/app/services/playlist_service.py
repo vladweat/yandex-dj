@@ -42,6 +42,11 @@ from app.services.retrieval_service import RetrievalService, non_anchor_artists_
 from app.services.scoring_service import ScoringService
 from app.services.yandex_music_service import YandexMusicService
 from app.utils.quality import artist_matches_reference, artist_tokens, is_spurious_track
+from app.utils.prompt_constraints import (
+    ensure_hard_reference_artists,
+    extract_prompt_constraints,
+    filter_excluded_languages,
+)
 from app.utils.scoring import apply_library_artist_boost
 
 logger = logging.getLogger(__name__)
@@ -113,8 +118,21 @@ def apply_exclude_artists(
         )
         logger.warning(warning)
         return profile, [warning]
-    return profile.model_copy(update={"reference_artists": remaining}), []
-
+    hard_remaining = [
+        artist
+        for artist in profile.hard_reference_artists
+        if any(artist_matches_reference(artist, ref) for ref in remaining)
+        and not any(artist_matches_reference(artist, excluded) for excluded in excludes)
+    ]
+    return (
+        profile.model_copy(
+            update={
+                "reference_artists": remaining,
+                "hard_reference_artists": hard_remaining,
+            }
+        ),
+        [],
+    )
 
 def _options_from_row(raw: dict | None) -> PlaylistGenerationOptions | None:
     if not raw:
@@ -291,6 +309,7 @@ class PlaylistService:
         login: str,
         user_id: uuid.UUID,
         exclude_artists: list[str] | None = None,
+        exclude_languages: list[str] | None = None,
         diversity: DiversityMode = "normal",
         use_library: bool = False,
         source_id: uuid.UUID | None = None,
@@ -299,6 +318,17 @@ class PlaylistService:
         excludes = _normalize_excludes(exclude_artists or [])
         pipeline_started = time.perf_counter()
         warnings: list[str] = []
+
+        constraints = extract_prompt_constraints(prompt)
+        languages = _normalize_excludes(list(exclude_languages or []))
+        for lang in constraints.exclude_languages:
+            if lang not in {item.casefold() for item in languages}:
+                languages.append(lang)
+        if constraints.prefer_high_diversity and diversity == "normal":
+            diversity = "high"
+            warnings.append("diversity=high по промпту («разнообразн…»).")
+        if "ru" in {item.casefold() for item in languages}:
+            warnings.append("Исключены треки с кириллицей в названии/исполнителях.")
 
         llm_started = time.perf_counter()
         if source_id is not None:
@@ -321,9 +351,11 @@ class PlaylistService:
                 raise
             llm_ms = int((time.perf_counter() - llm_started) * 1000)
 
+        profile = ensure_hard_reference_artists(profile, prompt)
         profile, exclude_warnings = apply_exclude_artists(profile, excludes)
         warnings.extend(exclude_warnings)
-
+        # После exclude якорей — пересчитать hard, если опустели.
+        profile = ensure_hard_reference_artists(profile, prompt)
         library_artists: list[str] = []
         if use_library:
             try:
@@ -361,9 +393,12 @@ class PlaylistService:
         retrieval_ms = int((time.perf_counter() - retrieval_started) * 1000)
 
         candidates = filter_excluded_candidates(candidates, excludes)
+        before_lang = len(candidates)
+        candidates = filter_excluded_languages(candidates, languages)
+        if before_lang and not candidates:
+            raise RetrievalError("No candidates left after language filters")
         if not candidates:
             raise RetrievalError("No candidates found for the prompt")
-
         scoring_started = time.perf_counter()
         try:
             selected, candidates, method = await self._score_with_feedback(
@@ -372,6 +407,7 @@ class PlaylistService:
                 prompt=prompt,
                 access_token=access_token,
                 excludes=excludes,
+                exclude_languages=languages,
                 diversity=diversity,
                 library_artists=library_artists,
             )
@@ -403,6 +439,7 @@ class PlaylistService:
             track_count=track_count,
             instrumental_only=instrumental_only,
             exclude_artists=excludes,
+            exclude_languages=languages,
             diversity=diversity,
             use_library=use_library,
         )
@@ -529,8 +566,10 @@ class PlaylistService:
         excludes: list[str],
         diversity: DiversityMode,
         library_artists: list[str] | None = None,
+        exclude_languages: list[str] | None = None,
     ) -> tuple[list[ScoredTrack], list[TrackCandidate], str]:
         library = library_artists or []
+        languages = list(exclude_languages or [])
         ranked_pool, method = await self._scoring.rank_pool(
             profile,
             candidates,
@@ -544,9 +583,10 @@ class PlaylistService:
             )
         selected = self._scoring.select(ranked_pool, profile, diversity=diversity)
         selected = filter_excluded_scored(selected, excludes)
+        selected = filter_excluded_languages(selected, languages)
 
         if len(selected) >= profile.target_track_count:
-            return selected, candidates, method
+            return selected[: profile.target_track_count], candidates, method
 
         feedback_artists = non_anchor_artists_from_ranked(
             ranked_pool,
@@ -570,6 +610,7 @@ class PlaylistService:
             similar_seeds=settings.feedback_similar_seeds,
         )
         candidates = filter_excluded_candidates(candidates, excludes)
+        candidates = filter_excluded_languages(candidates, languages)
         new_candidates = [track for track in candidates if track.id not in known_ids]
         if not new_candidates:
             return selected, candidates, method
@@ -588,7 +629,8 @@ class PlaylistService:
             )
         selected = self._scoring.select(ranked_pool, profile, diversity=diversity)
         selected = filter_excluded_scored(selected, excludes)
-        return selected, candidates, method
+        selected = filter_excluded_languages(selected, languages)
+        return selected[: profile.target_track_count], candidates, method
 
     async def _export(
         self,

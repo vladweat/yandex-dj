@@ -10,6 +10,14 @@ class MusicProfile(BaseModel):
     mood_tags: list[str] = Field(default_factory=list)
     vocal_type: str = Field(description="'any' | 'instrumental_only' | 'vocal_only'")
     reference_artists: list[str] = Field(min_length=4, max_length=8)
+    hard_reference_artists: list[str] = Field(
+        default_factory=list,
+        max_length=3,
+        description=(
+            "1–3 артиста, явно названных пользователем (подмножество reference_artists). "
+            "Пусто — пайплайн выберет топ-2."
+        ),
+    )
     search_queries: list[str] = Field(min_length=3, max_length=5)
     target_track_count: int = Field(default=25, ge=1, le=50)
 

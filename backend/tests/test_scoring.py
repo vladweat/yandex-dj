@@ -15,6 +15,7 @@ from app.utils.scoring import (
     cosine_scores,
     fallback_scores,
     filter_by_top_median_gap,
+    is_score_plateau,
     max_anchor_tracks,
     max_tracks_per_artist,
     merge_embedding_rank,
@@ -148,6 +149,98 @@ def test_apply_diversity_filter_allows_extra_anchor_slots() -> None:
     )
     assert len(filtered) == 4
     assert sum(1 for track, _ in filtered if track.artists[0] == "Kavinsky") == 3
+
+
+def test_soft_reference_artists_use_normal_diversity_slots() -> None:
+    profile = _profile().model_copy(
+        update={
+            "hard_reference_artists": ["Kavinsky"],
+            "reference_artists": [
+                "Kavinsky",
+                "Perturbator",
+                "Night Lovell",
+                "Lil Peep",
+            ],
+        }
+    )
+    ranked = [
+        (_track("1", "A1", "Night Lovell"), 0.9),
+        (_track("2", "A2", "Night Lovell"), 0.89),
+        (_track("3", "A3", "Night Lovell"), 0.88),
+        (_track("4", "B1", "Other"), 0.87),
+    ]
+    filtered = apply_diversity_filter(
+        ranked,
+        limit=4,
+        max_per_artist=2,
+        profile=profile,
+        anchor_max_per_artist=3,
+    )
+    assert sum(1 for track, _ in filtered if track.artists[0] == "Night Lovell") == 2
+
+
+def test_hard_anchor_boost_skips_soft_refs() -> None:
+    profile = _profile().model_copy(
+        update={
+            "hard_reference_artists": ["Kavinsky"],
+            "reference_artists": [
+                "Kavinsky",
+                "Perturbator",
+                "Night Lovell",
+                "Lil Peep",
+            ],
+        }
+    )
+    ranked = [
+        (_track("1", "A", "Night Lovell"), 0.80),
+        (_track("2", "B", "Kavinsky"), 0.80),
+    ]
+    boosted = apply_reference_anchor_boost(ranked, profile)
+    by_id = {track.id: score for track, score in boosted}
+    assert by_id["2"] == pytest.approx(0.83)
+    assert by_id["1"] == pytest.approx(0.80)
+
+
+def test_mood_title_demote_lowers_sad_title() -> None:
+    from app.utils.scoring import apply_mood_title_demote
+
+    profile = _profile().model_copy(update={"mood_tags": ["sad", "melancholic"]})
+    ranked = [
+        (_track("1", "Sad Night", "Random"), 0.85),
+        (_track("2", "Waves", "Other"), 0.849),
+    ]
+    demoted = apply_mood_title_demote(ranked, profile)
+    assert demoted[0][0].id == "2"
+    assert demoted[1][0].id == "1"
+
+
+def test_plateau_prefers_non_hard_anchor_in_bucket() -> None:
+    from app.utils.scoring import prefer_non_anchors_on_plateau
+
+    profile = _profile(target_track_count=5).model_copy(
+        update={
+            "hard_reference_artists": ["Kavinsky"],
+            "reference_artists": [
+                "Kavinsky",
+                "Perturbator",
+                "Gunship",
+                "FM-84",
+            ],
+        }
+    )
+    ranked = [
+        (_track("1", "A", "Kavinsky"), 0.850),
+        (_track("2", "B", "Ghostemane"), 0.849),
+        (_track("3", "C", "Someone"), 0.848),
+        (_track("4", "D", "Else"), 0.847),
+        (_track("5", "E", "Other"), 0.846),
+    ]
+    assert is_score_plateau(ranked, 5)
+    reordered = prefer_non_anchors_on_plateau(ranked, profile, limit=5)
+    # В одной score-корзине все non-hard раньше hard (Kavinsky).
+    assert reordered[0][0].id == "2"
+    assert reordered[-1][0].id == "1"
+    assert all(track.artists[0] != "Kavinsky" for track, _ in reordered[:-1])
 
 
 def test_select_playlist_tracks_sorted_by_score_after_fill() -> None:

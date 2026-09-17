@@ -15,6 +15,7 @@ class PlaylistGenerateRequest(BaseModel):
     track_count: int = Field(default=25, ge=1, le=50)
     instrumental_only: bool = False
     exclude_artists: list[str] = Field(default_factory=list, max_length=20)
+    exclude_languages: list[str] = Field(default_factory=list, max_length=5)
     diversity: DiversityMode = "normal"
     use_library: bool = False
     source_id: uuid.UUID | None = None
@@ -42,6 +43,7 @@ class PlaylistGenerationOptions(BaseModel):
     track_count: int = 25
     instrumental_only: bool = False
     exclude_artists: list[str] = Field(default_factory=list)
+    exclude_languages: list[str] = Field(default_factory=list)
     diversity: DiversityMode = "normal"
     use_library: bool = False
 

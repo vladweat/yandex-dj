@@ -12,6 +12,7 @@ from app.core.exceptions import LLMError
 from app.core.llm_config import openai_is_configured, resolve_openai_base_url, resolve_openai_model
 from app.schemas.llm import MusicProfile
 from app.services.llm_prompts import build_messages
+from app.utils.prompt_constraints import ensure_hard_reference_artists
 from app.utils.search_queries import refine_search_queries
 
 LLM_MAX_RETRIES = 2
@@ -55,6 +56,7 @@ def apply_request_hints(
     *,
     track_count: int | None,
     instrumental_only: bool,
+    prompt: str | None = None,
 ) -> MusicProfile:
     updates: dict[str, Any] = {}
     if track_count is not None:
@@ -63,8 +65,8 @@ def apply_request_hints(
         updates["vocal_type"] = "instrumental_only"
     if updates:
         profile = profile.model_copy(update=updates)
-    return enrich_search_queries(profile)
-
+    profile = enrich_search_queries(profile)
+    return ensure_hard_reference_artists(profile, prompt)
 
 class LLMService:
     def __init__(self, *, client: Any | None = None) -> None:
@@ -111,4 +113,5 @@ class LLMService:
             profile,
             track_count=track_count,
             instrumental_only=instrumental_only,
+            prompt=text,
         )
