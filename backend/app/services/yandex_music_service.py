@@ -7,6 +7,7 @@ from typing import TypeVar
 
 from yandex_music import ClientAsync, DeviceCode, OAuthToken, Playlist, Status, Track
 from yandex_music.exceptions import DeviceAuthError, NetworkError, TimedOutError
+from yandex_music.utils.difference import Difference
 from yandex_music.utils.request_async import Request
 
 from app.core.config import settings
@@ -426,44 +427,29 @@ class YandexMusicService:
         playlist: Playlist,
         track_refs: Sequence[tuple[str, str]],
     ) -> None:
+        """Одна операция change (Difference) вместо N insert_track — сильно быстрее под proxy."""
         if playlist.kind is None or playlist.revision is None:
             raise ExportError("Invalid playlist response from Yandex API")
+        if not track_refs:
+            return
 
-        revision = playlist.revision
-        for index, (track_id, album_id) in enumerate(track_refs):
-            revision = await self._insert_playlist_track(
-                client,
-                playlist.kind,
-                track_id,
-                album_id,
-                at=index,
-                revision=revision,
-            )
+        tracks_payload = [
+            {"id": track_id, "album_id": album_id} for track_id, album_id in track_refs
+        ]
+        diff = Difference().add_insert(at=0, tracks=tracks_payload).to_json()
 
-    async def _insert_playlist_track(
-        self,
-        client: ClientAsync,
-        kind: str | int,
-        track_id: str,
-        album_id: str,
-        *,
-        at: int,
-        revision: int,
-    ) -> int:
-        async def _insert() -> int:
+        async def _change() -> Playlist:
             await self._throttle()
-            updated = await client.users_playlists_insert_track(
-                kind,
-                track_id,
-                album_id,
-                at=at,
-                revision=revision,
+            updated = await client.users_playlists_change(
+                playlist.kind,
+                diff,
+                revision=playlist.revision,
             )
-            if updated is None or updated.revision is None:
-                raise YandexMusicError(f"Failed to insert track {track_id}")
-            return updated.revision
+            if updated is None:
+                raise YandexMusicError("Failed to populate playlist via change")
+            return updated
 
-        return await self._call_with_retry(_insert)
+        await self._call_with_retry(_change)
 
     @staticmethod
     def playlist_url(login: str, kind: str | int) -> str:
