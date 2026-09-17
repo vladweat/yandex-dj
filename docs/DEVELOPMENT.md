@@ -16,7 +16,7 @@
 | Качество плейлистов | ✅ этап 5.5: P0/P1/P2 — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) |
 | Продукт (этап 6) | ✅ история / реген / profile / опции / UX / CI |
 | CI | ✅ `.github/workflows/ci.yml` — ruff + pytest + tsc/vitest |
-| Техдолг A/B/C | ✅ кроме C4 (`quality.py` при SEO) |
+| Техдолг A/B/C | ✅ C4 split `utils/quality/` |
 | **Следующий фокус** | [PRODUCT.md](PRODUCT.md): **P0 metrics** → P1 бот / listening graph |
 
 **MVP, этап 5.5 и этап 6 закрыты.** Ядро не трогать без регресса golden. Фокус: **product metrics → канал → персонализация Яндекса**.
@@ -306,7 +306,7 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 | C1 | ~~Нет тестов feedback-path~~ | `test_playlist.py` | ✅ |
 | C2 | ~~Дубль discovered vs feedback expand~~ | `retrieval_service` | ✅ `_expand_by_artist_names` |
 | C3 | ~~Дубль generate error handling~~ | form / result / utils | ✅ |
-| C4 | Размер `quality.py` (~445) | `utils/quality.py` | При SEO-правке — сплит |
+| C4 | ~~Размер `quality.py`~~ | `utils/quality/` | ✅ сплит |
 | C5 | Cost-per-playlist (LLM tokens + # Yandex calls) | logs / metrics | Вместе с PRODUCT P0.1 / P1.5 |
 | C6 | E2E smoke vs staging Яндекс в CI | optional | Когда будет test-аккаунт |
 

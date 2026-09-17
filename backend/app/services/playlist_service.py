@@ -36,18 +36,32 @@ from app.schemas.playlist import (
     PlaylistTrackResponse,
 )
 from app.schemas.scoring import ScoredTrack
-from app.schemas.track import TrackCandidate
 from app.services.llm_service import LLMService
-from app.services.retrieval_service import RetrievalService, non_anchor_artists_from_ranked
+from app.services.playlist_scoring import score_with_feedback
+from app.services.retrieval_service import RetrievalService
 from app.services.scoring_service import ScoringService
 from app.services.yandex_music_service import YandexMusicService
+from app.utils.playlist_filters import (
+    apply_exclude_artists,
+    filter_excluded_candidates,
+    normalize_excludes,
+)
 from app.utils.prompt_constraints import (
     ensure_hard_reference_artists,
     extract_prompt_constraints,
     filter_excluded_languages,
 )
-from app.utils.quality import artist_matches_reference, artist_tokens, is_spurious_track
-from app.utils.scoring import apply_library_artist_boost
+from app.utils.quality import is_spurious_track
+
+# Re-export для тестов и внешних импортов
+__all__ = [
+    "PlaylistService",
+    "apply_exclude_artists",
+    "build_playlist_description",
+    "filter_excluded_candidates",
+    "generation_to_response",
+    "yandex_kind_from_url",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -72,68 +86,6 @@ def _track_response(track: ScoredTrack) -> PlaylistTrackResponse:
     )
 
 
-def _normalize_excludes(exclude_artists: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for name in exclude_artists:
-        cleaned = name.strip()
-        if not cleaned:
-            continue
-        key = cleaned.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(cleaned)
-    return result
-
-
-def apply_exclude_artists(
-    profile: MusicProfile,
-    exclude_artists: list[str],
-) -> tuple[MusicProfile, list[str]]:
-    """
-    Убирает excludes из reference_artists, если останется ≥4 якоря.
-
-    Возвращает (profile, warnings). Кандидаты фильтруются отдельно —
-    даже если якоря не трогали.
-    """
-    excludes = _normalize_excludes(exclude_artists)
-    if not excludes:
-        return profile, []
-    remaining = [
-        artist
-        for artist in profile.reference_artists
-        if not any(artist_matches_reference(artist, excluded) for excluded in excludes)
-    ]
-    if len(remaining) < 4:
-        kept = [
-            artist
-            for artist in profile.reference_artists
-            if any(artist_matches_reference(artist, excluded) for excluded in excludes)
-        ]
-        names = ", ".join(kept) if kept else ", ".join(excludes)
-        warning = (
-            f"exclude_artists не сняты с якорей (нужно ≥4 reference_artists): {names}. "
-            "Из пула кандидатов они всё равно исключены."
-        )
-        logger.warning(warning)
-        return profile, [warning]
-    hard_remaining = [
-        artist
-        for artist in profile.hard_reference_artists
-        if any(artist_matches_reference(artist, ref) for ref in remaining)
-        and not any(artist_matches_reference(artist, excluded) for excluded in excludes)
-    ]
-    return (
-        profile.model_copy(
-            update={
-                "reference_artists": remaining,
-                "hard_reference_artists": hard_remaining,
-            }
-        ),
-        [],
-    )
-
 def _options_from_row(raw: dict | None) -> PlaylistGenerationOptions | None:
     if not raw:
         return None
@@ -157,45 +109,6 @@ def _feedback_to_int(value: FeedbackValue | None) -> int | None:
     if value == "dislike":
         return -1
     return None
-
-
-def filter_excluded_candidates(
-    candidates: list[TrackCandidate],
-    exclude_artists: list[str],
-) -> list[TrackCandidate]:
-    excludes = _normalize_excludes(exclude_artists)
-    if not excludes:
-        return candidates
-    kept: list[TrackCandidate] = []
-    for track in candidates:
-        tokens = artist_tokens(track)
-        if any(
-            artist_matches_reference(token, excluded)
-            for token in tokens
-            for excluded in excludes
-        ):
-            continue
-        kept.append(track)
-    return kept
-
-
-def filter_excluded_scored(
-    selected: list[ScoredTrack],
-    exclude_artists: list[str],
-) -> list[ScoredTrack]:
-    excludes = _normalize_excludes(exclude_artists)
-    if not excludes:
-        return selected
-    kept: list[ScoredTrack] = []
-    for track in selected:
-        if any(
-            artist_matches_reference(artist, excluded)
-            for artist in track.artists
-            for excluded in excludes
-        ):
-            continue
-        kept.append(track)
-    return kept
 
 
 def yandex_kind_from_url(playlist_url: str) -> str | None:
@@ -315,12 +228,12 @@ class PlaylistService:
         source_id: uuid.UUID | None = None,
     ) -> PlaylistGenerateResponse:
         await self._ensure_quota_available(user_id, source_id=source_id)
-        excludes = _normalize_excludes(exclude_artists or [])
+        excludes = normalize_excludes(exclude_artists or [])
         pipeline_started = time.perf_counter()
         warnings: list[str] = []
 
         constraints = extract_prompt_constraints(prompt)
-        languages = _normalize_excludes(list(exclude_languages or []))
+        languages = normalize_excludes(list(exclude_languages or []))
         for lang in constraints.exclude_languages:
             if lang not in {item.casefold() for item in languages}:
                 languages.append(lang)
@@ -361,7 +274,7 @@ class PlaylistService:
             try:
                 library_artists = await self._yandex.fetch_library_artist_names(
                     access_token,
-                    limit=settings.library_artist_limit,
+                    limit=settings.library.artist_limit,
                 )
                 if not library_artists:
                     warnings.append(
@@ -378,13 +291,13 @@ class PlaylistService:
         try:
             candidates = await self._retrieval.collect_candidates(profile, access_token)
             if library_artists:
-                seed_artists = library_artists[: settings.library_seed_artists]
+                seed_artists = library_artists[: settings.library.seed_artists]
                 candidates = await self._retrieval.expand_from_artists(
                     profile,
                     access_token,
                     candidates,
                     seed_artists,
-                    similar_seeds=settings.library_similar_seeds,
+                    similar_seeds=settings.library.similar_seeds,
                 )
         except YandexMusicError:
             raise
@@ -401,7 +314,7 @@ class PlaylistService:
             raise RetrievalError("No candidates found for the prompt")
         scoring_started = time.perf_counter()
         try:
-            selected, candidates, method, shortfall = await self._score_with_feedback(
+            selected, candidates, method, shortfall = await score_with_feedback(
                 profile,
                 candidates,
                 prompt=prompt,
@@ -409,6 +322,8 @@ class PlaylistService:
                 excludes=excludes,
                 exclude_languages=languages,
                 diversity=diversity,
+                scoring=self._scoring,
+                retrieval=self._retrieval,
                 library_artists=library_artists,
             )
         except Exception as exc:
@@ -560,100 +475,6 @@ class PlaylistService:
             id=row.id,
             feedback=_feedback_from_row(row.feedback),
             feedback_at=row.feedback_at,
-        )
-
-    async def _score_with_feedback(
-        self,
-        profile: MusicProfile,
-        candidates: list[TrackCandidate],
-        *,
-        prompt: str,
-        access_token: str,
-        excludes: list[str],
-        diversity: DiversityMode,
-        library_artists: list[str] | None = None,
-        exclude_languages: list[str] | None = None,
-    ) -> tuple[list[ScoredTrack], list[TrackCandidate], str, bool]:
-        library = library_artists or []
-        languages = list(exclude_languages or [])
-        ranked_pool, method = await self._scoring.rank_pool(
-            profile,
-            candidates,
-            user_prompt=prompt,
-        )
-        if library:
-            ranked_pool = apply_library_artist_boost(
-                ranked_pool,
-                library,
-                boost=settings.library_artist_boost,
-            )
-        selected, shortfall = self._scoring.select(
-            ranked_pool,
-            profile,
-            diversity=diversity,
-        )
-        selected = filter_excluded_scored(selected, excludes)
-        selected = filter_excluded_languages(selected, languages)
-
-        if len(selected) >= profile.target_track_count:
-            return (
-                selected[: profile.target_track_count],
-                candidates,
-                method,
-                shortfall,
-            )
-
-        feedback_artists = non_anchor_artists_from_ranked(
-            ranked_pool,
-            profile,
-            limit=settings.feedback_artists_limit,
-        )
-        feedback_artists = [
-            artist
-            for artist in feedback_artists
-            if not any(artist_matches_reference(artist, excluded) for excluded in excludes)
-        ]
-        if not feedback_artists:
-            return selected, candidates, method, shortfall
-
-        known_ids = {track.id for track, _ in ranked_pool}
-        candidates = await self._retrieval.expand_from_artists(
-            profile,
-            access_token,
-            candidates,
-            feedback_artists,
-            similar_seeds=settings.feedback_similar_seeds,
-        )
-        candidates = filter_excluded_candidates(candidates, excludes)
-        candidates = filter_excluded_languages(candidates, languages)
-        new_candidates = [track for track in candidates if track.id not in known_ids]
-        if not new_candidates:
-            return selected, candidates, method, shortfall
-
-        ranked_pool, method = await self._scoring.rank_pool_merge(
-            profile,
-            ranked_pool,
-            new_candidates,
-            user_prompt=prompt,
-        )
-        if library:
-            ranked_pool = apply_library_artist_boost(
-                ranked_pool,
-                library,
-                boost=settings.library_artist_boost,
-            )
-        selected, shortfall = self._scoring.select(
-            ranked_pool,
-            profile,
-            diversity=diversity,
-        )
-        selected = filter_excluded_scored(selected, excludes)
-        selected = filter_excluded_languages(selected, languages)
-        return (
-            selected[: profile.target_track_count],
-            candidates,
-            method,
-            shortfall,
         )
 
     async def _export(

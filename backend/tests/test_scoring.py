@@ -69,9 +69,7 @@ def test_max_anchor_tracks_is_about_sixty_percent() -> None:
 
 
 def test_filter_by_top_median_gap_drops_embedding_false_positive() -> None:
-    ranked = [
-        (_track(str(i), f"T{i}", f"A{i}"), 0.94 - i * 0.005) for i in range(10)
-    ]
+    ranked = [(_track(str(i), f"T{i}", f"A{i}"), 0.94 - i * 0.005) for i in range(10)]
     ranked.append((_track("junk", "Vlone", "Hauvy"), 0.70))
     filtered = filter_by_top_median_gap(ranked)
     assert all(track.id != "junk" for track, _ in filtered)
@@ -474,9 +472,7 @@ def test_two_phase_head_lock_preserves_top_five() -> None:
         (_track("4", "D", "Else"), 0.87),
         (_track("5", "E", "Band"), 0.86),
     ]
-    ranked += [
-        (_track(f"x{i}", f"Tail {i}", f"Filler {i}"), 0.5) for i in range(40)
-    ]
+    ranked += [(_track(f"x{i}", f"Tail {i}", f"Filler {i}"), 0.5) for i in range(40)]
     before = select_playlist_tracks(ranked[:5], profile)
     after = select_playlist_tracks(ranked, profile)
     assert [track.id for track, _ in after[:5]] == [track.id for track, _ in before[:5]]
@@ -489,15 +485,9 @@ def test_strict_expansion_shortfall_on_flat_large_pool() -> None:
             "reference_artists": ["Kavinsky", "Perturbator", "Gunship", "FM-84"],
         }
     )
-    ranked = [
-        (_track(f"a{i}", f"A{i}", "Kavinsky"), 0.88 - i * 0.0005) for i in range(8)
-    ]
-    ranked += [
-        (_track(f"b{i}", f"B{i}", "Perturbator"), 0.87 - i * 0.0005) for i in range(8)
-    ]
-    ranked += [
-        (_track(f"j{i}", f"Junk {i}", f"Random {i}"), 0.62 - i * 0.01) for i in range(120)
-    ]
+    ranked = [(_track(f"a{i}", f"A{i}", "Kavinsky"), 0.88 - i * 0.0005) for i in range(8)]
+    ranked += [(_track(f"b{i}", f"B{i}", "Perturbator"), 0.87 - i * 0.0005) for i in range(8)]
+    ranked += [(_track(f"j{i}", f"Junk {i}", f"Random {i}"), 0.62 - i * 0.01) for i in range(120)]
     meta = select_playlist_with_meta(ranked, profile)
     assert meta.shortfall
     assert len(meta.tracks) < 25

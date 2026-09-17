@@ -81,9 +81,7 @@ def limits_for_profile(
             anchor_fill=HIGH_DIVERSITY_ANCHOR_FILL,
             anchor_cap=anchor_cap,
         )
-    per_artist = (
-        max_per_artist if max_per_artist is not None else max_tracks_per_artist(limit)
-    )
+    per_artist = max_per_artist if max_per_artist is not None else max_tracks_per_artist(limit)
     return SelectLimits(
         per_artist=per_artist,
         anchor_max=ANCHOR_MAX_TRACKS_PER_ARTIST,
@@ -196,8 +194,7 @@ def exclude_selected(
     return [
         (track, score)
         for track, score in ranked
-        if track.id not in taken_ids
-        and normalize_song_title(track.title) not in taken_titles
+        if track.id not in taken_ids and normalize_song_title(track.title) not in taken_titles
     ]
 
 
@@ -426,9 +423,7 @@ def select_playlist_with_meta(
 
     ranked = apply_mood_title_demote(ranked, profile)
     scores = [score for _, score in ranked]
-    limits = limits_for_profile(
-        profile, diversity=diversity, max_per_artist=max_per_artist
-    )
+    limits = limits_for_profile(profile, diversity=diversity, max_per_artist=max_per_artist)
     artist_counts = pool_artist_counts(ranked)
 
     head_k = compute_head_lock_size(scores, limit)

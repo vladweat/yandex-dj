@@ -44,7 +44,7 @@ def _configure_torch() -> None:
     except ImportError:
         return
 
-    threads = settings.embedding_torch_threads
+    threads = settings.scoring.torch_threads
     if threads > 0:
         torch.set_num_threads(threads)
     else:

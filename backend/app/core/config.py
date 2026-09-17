@@ -1,6 +1,13 @@
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.settings_groups import (
+    LibrarySettings,
+    RetrievalSettings,
+    ScoringSettings,
+    YandexSettings,
+)
+
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:3001,http://127.0.0.1:3001,http://localhost:3000,http://127.0.0.1:3000"
 )
@@ -100,6 +107,55 @@ class Settings(BaseSettings):
     @property
     def database_is_local(self) -> bool:
         return "localhost" in self.database_url or "127.0.0.1" in self.database_url
+
+    @property
+    def retrieval(self) -> RetrievalSettings:
+        return RetrievalSettings(
+            max_candidates=self.max_candidates,
+            min_candidates_pool=self.min_candidates_pool,
+            target_candidates_pool=self.target_candidates_pool,
+            artist_tracks_limit=self.artist_tracks_limit,
+            search_tracks_per_query=self.search_tracks_per_query,
+            search_pages=self.search_pages,
+            search_expand_max_queries=self.search_expand_max_queries,
+            retrieval_expand_passes=self.retrieval_expand_passes,
+            min_clean_candidates=self.min_clean_candidates,
+            similar_seeds_per_artist=self.similar_seeds_per_artist,
+            max_similar_requests=self.max_similar_requests,
+            reference_artists_tops_limit=self.reference_artists_tops_limit,
+            discovered_artists_limit=self.discovered_artists_limit,
+            discovered_similar_seeds=self.discovered_similar_seeds,
+            feedback_artists_limit=self.feedback_artists_limit,
+            feedback_similar_seeds=self.feedback_similar_seeds,
+        )
+
+    @property
+    def library(self) -> LibrarySettings:
+        return LibrarySettings(
+            artist_limit=self.library_artist_limit,
+            seed_artists=self.library_seed_artists,
+            similar_seeds=self.library_similar_seeds,
+            likes_track_limit=self.library_likes_track_limit,
+            recent_full_models=self.library_recent_full_models,
+            artist_boost=self.library_artist_boost,
+        )
+
+    @property
+    def scoring(self) -> ScoringSettings:
+        return ScoringSettings(
+            embed_limit=self.scoring_embed_limit,
+            batch_size=self.embedding_batch_size,
+            torch_threads=self.embedding_torch_threads,
+            max_tracks_per_artist=self.max_tracks_per_artist,
+        )
+
+    @property
+    def yandex(self) -> YandexSettings:
+        return YandexSettings(
+            rate_limit_delay_sec=self.yandex_rate_limit_delay_sec,
+            api_max_retries=self.yandex_api_max_retries,
+            device_flow_timeout_sec=self.device_flow_timeout_sec,
+        )
 
 
 settings = Settings()

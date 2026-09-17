@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -24,19 +25,31 @@ from app.cli.auth_flow import (
     save_pending,
 )
 from app.core.config import settings
-from app.core.exceptions import LLMError, SecurityError, YandexMusicError
+from app.core.exceptions import (
+    ExportError,
+    LLMError,
+    NotFoundError,
+    QuotaExceededError,
+    RetrievalError,
+    ScoringError,
+    SecurityError,
+    YandexMusicError,
+)
 from app.core.proxy import get_outbound_proxy_url
+from app.core.security import decrypt_token
 from app.db.session import AsyncSessionLocal
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import DeviceFlowPollResponse
 from app.schemas.llm import MusicProfile
 from app.services.auth_service import AuthService
-from app.services.llm_service import LLMService
-from app.services.retrieval_service import RetrievalService
-from app.services.scoring_service import ScoringService
-from app.services.track_cache import TrackCacheService
-from app.services.yandex_music_service import YandexMusicService
+from app.services.service_factory import (
+    build_llm_service,
+    build_playlist_service,
+    build_retrieval_service,
+    build_scoring_service,
+    build_yandex_music_service,
+)
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
@@ -91,7 +104,7 @@ async def _with_auth_service[T](fn: Callable[[AuthService], Awaitable[T]]) -> T:
         async with AsyncSessionLocal() as db:
             service = AuthService(
                 db=db,
-                yandex=YandexMusicService(),
+                yandex=build_yandex_music_service(),
                 user_repo=UserRepository(db),
                 session_repo=SessionRepository(db),
             )
@@ -133,7 +146,7 @@ def auth_start() -> None:
 
 
 async def _auth_start() -> None:
-    yandex = YandexMusicService()
+    yandex = build_yandex_music_service()
     try:
         code = await yandex.request_device_code()
     except (TimedOutError, NetworkError, YandexMusicError) as exc:
@@ -176,7 +189,7 @@ async def _auth_poll(
         login = pending.get("login")
         if uid is None or login is None:
             try:
-                uid, login = await YandexMusicService().resolve_account(str(saved_token))
+                uid, login = await build_yandex_music_service().resolve_account(str(saved_token))
             except (TimedOutError, NetworkError, YandexMusicError) as exc:
                 raise click.ClickException(
                     f"Нет профиля в pending.json, Яндекс недоступен ({exc}). "
@@ -203,9 +216,9 @@ async def _auth_poll(
         )
 
     interval = int(pending.get("interval", 5))
-    timeout = int(pending.get("expires_in", settings.device_flow_timeout_sec))
+    timeout = int(pending.get("expires_in", settings.yandex.device_flow_timeout_sec))
     deadline = time.monotonic() + timeout
-    yandex = YandexMusicService()
+    yandex = build_yandex_music_service()
 
     while True:
         try:
@@ -275,7 +288,7 @@ def auth_test() -> None:
 
 
 async def _run_auth_test() -> None:
-    yandex = YandexMusicService()
+    yandex = build_yandex_music_service()
 
     def _on_code(code: DeviceCode) -> None:
         _print_device_code(code.user_code, code.verification_url)
@@ -285,7 +298,7 @@ async def _run_auth_test() -> None:
     try:
         access_token = await yandex.device_auth(
             on_code=_on_code,
-            timeout=settings.device_flow_timeout_sec,
+            timeout=settings.yandex.device_flow_timeout_sec,
         )
     except DeviceAuthError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -317,7 +330,7 @@ async def _llm_parse(
     track_count: int | None,
     instrumental_only: bool,
 ) -> None:
-    service = LLMService()
+    service = build_llm_service()
     try:
         profile = await service.parse_prompt(
             prompt,
@@ -372,13 +385,13 @@ async def _retrieval_fetch(
     if profile_json is not None:
         profile = MusicProfile.model_validate_json(Path(profile_json).read_text(encoding="utf-8"))
     else:
-        llm = LLMService()
+        llm = build_llm_service()
         try:
             profile = await llm.parse_prompt(prompt or "")
         except LLMError as exc:
             raise click.ClickException(str(exc)) from exc
 
-    service = RetrievalService(YandexMusicService(), TrackCacheService())
+    service = build_retrieval_service()
     started = time.perf_counter()
     try:
         tracks = await service.collect_candidates(
@@ -395,6 +408,90 @@ async def _retrieval_fetch(
     for track in tracks[:5]:
         artists = ", ".join(track.artists)
         click.echo(f"  - {artists} — {track.title} ({track.id})")
+
+
+@cli.group("playlist")
+def playlist() -> None:
+    """Полный пайплайн generate (как POST /playlists/generate)."""
+
+
+@playlist.command("generate")
+@click.argument("prompt")
+@click.option("--session-id", type=click.UUID, required=True, help="session_id из auth poll")
+@click.option("--track-count", type=int, default=25, show_default=True)
+@click.option("--instrumental-only", is_flag=True, default=False)
+@click.option("--use-library", is_flag=True, default=False)
+@click.option(
+    "--diversity",
+    type=click.Choice(["normal", "high"], case_sensitive=False),
+    default="normal",
+    show_default=True,
+)
+def playlist_generate(
+    prompt: str,
+    session_id: uuid.UUID,
+    track_count: int,
+    instrumental_only: bool,
+    use_library: bool,
+    diversity: str,
+) -> None:
+    """LLM → retrieval → scoring → export → PostgreSQL."""
+    asyncio.run(
+        _playlist_generate(
+            prompt,
+            session_id,
+            track_count=track_count,
+            instrumental_only=instrumental_only,
+            use_library=use_library,
+            diversity=diversity,
+        )
+    )
+
+
+async def _playlist_generate(
+    prompt: str,
+    session_id: uuid.UUID,
+    *,
+    track_count: int,
+    instrumental_only: bool,
+    use_library: bool,
+    diversity: str,
+) -> None:
+    try:
+        async with AsyncSessionLocal() as db:
+            session = await SessionRepository(db).get_valid(session_id)
+            if session is None:
+                raise click.ClickException("Invalid or expired session_id")
+            service = build_playlist_service(db)
+            access_token = decrypt_token(session.encrypted_token)
+            result = await service.generate(
+                prompt=prompt,
+                track_count=track_count,
+                instrumental_only=instrumental_only,
+                access_token=access_token,
+                login=session.user.login,
+                user_id=session.user_id,
+                diversity=diversity,
+                use_library=use_library,
+            )
+    except QuotaExceededError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except NotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except LLMError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except YandexMusicError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except ExportError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except RetrievalError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except ScoringError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except (TimeoutError, OSError, OperationalError, DBAPIError) as exc:
+        raise _db_unavailable(exc) from exc
+
+    click.echo(result.model_dump_json(indent=2, ensure_ascii=False))
 
 
 @cli.group("scoring")
@@ -451,7 +548,7 @@ async def _scoring_rank(
     if profile_json is not None:
         profile = MusicProfile.model_validate_json(Path(profile_json).read_text(encoding="utf-8"))
     else:
-        llm = LLMService()
+        llm = build_llm_service()
         llm_started = time.perf_counter()
         try:
             profile = await llm.parse_prompt(prompt or "")
@@ -467,7 +564,7 @@ async def _scoring_rank(
     else:
         if token is None:
             raise click.UsageError("Укажите --token или YANDEX_OAUTH_TOKEN")
-        retrieval = RetrievalService(YandexMusicService(), TrackCacheService())
+        retrieval = build_retrieval_service()
         retrieval_started = time.perf_counter()
         try:
             candidates = await retrieval.collect_candidates(
@@ -479,7 +576,7 @@ async def _scoring_rank(
             raise _yandex_error(exc) from exc
         click.echo(f"retrieval_ms: {int((time.perf_counter() - retrieval_started) * 1000)}")
 
-    embed_pool = min(len(candidates), settings.scoring_embed_limit)
+    embed_pool = min(len(candidates), settings.scoring.embed_limit)
     click.echo(f"candidates: {len(candidates)}")
     click.echo(f"embed_pool: {embed_pool}")
 
@@ -487,7 +584,7 @@ async def _scoring_rank(
     warmup_embedding_model()
     click.echo(f"model_warmup_ms: {int((time.perf_counter() - warmup_started) * 1000)}")
 
-    scoring_service = ScoringService()
+    scoring_service = build_scoring_service()
     scoring_started = time.perf_counter()
     tracks, method = await scoring_service.rank(profile, candidates, user_prompt=user_prompt)
     scoring_ms = int((time.perf_counter() - scoring_started) * 1000)

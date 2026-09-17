@@ -91,9 +91,7 @@ def append_diverse_tracks(
     for track, _ in selected:
         for key in diversity_artist_keys(track):
             artist_counts[key] = artist_counts.get(key, 0) + 1
-    anchors_used = sum(
-        1 for track, _ in selected if hard_references_in_artists(track, profile)
-    )
+    anchors_used = sum(1 for track, _ in selected if hard_references_in_artists(track, profile))
 
     extra = apply_diversity_filter(
         ranked,

@@ -71,6 +71,7 @@ def apply_request_hints(
     profile = enrich_search_queries(profile)
     return ensure_hard_reference_artists(profile, prompt)
 
+
 class LLMService:
     def __init__(self, *, client: Any | None = None) -> None:
         self._injected_client = client

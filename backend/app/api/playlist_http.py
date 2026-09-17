@@ -65,7 +65,6 @@ def raise_playlist_generate_timeout(exc: TimeoutError) -> None:
     raise HTTPException(
         status_code=status.HTTP_504_GATEWAY_TIMEOUT,
         detail=(
-            f"Playlist generation exceeded {settings.pipeline_timeout_sec}s "
-            f"(PIPELINE_TIMEOUT_SEC)"
+            f"Playlist generation exceeded {settings.pipeline_timeout_sec}s (PIPELINE_TIMEOUT_SEC)"
         ),
     ) from PipelineTimeoutError(str(exc))

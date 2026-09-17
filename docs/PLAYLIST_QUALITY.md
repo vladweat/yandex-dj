@@ -65,7 +65,7 @@ Playlist pipeline: … tracks=… method=embedding raw=… clean=…
 user prompt
     ↓ LLM → MusicProfile (reference_artists, search_queries — без SEO-фраз)
     ↓ retrieval (search + artist tops + similar + discovered artists)
-    ↓ pre-filter (quality.py — универсальный SEO/мусор)
+    ↓ pre-filter (`utils/quality/` — универсальный SEO/мусор)
     ↓ embedding (prompt + description + genres + mood; БЕЗ reference_artists в query)
     ↓ +0.03 hard-anchor boost (`hard_reference_artists`; soft refs — только retrieval)
     ↓ select: gap → mood-demote → **phase A head lock** → **phase B expansion** (plateau/prior) → shortfall
@@ -81,7 +81,9 @@ user prompt
 |------|------|
 | `backend/app/services/llm_prompts.py` | Системный промпт, few-shot «макароны» / named-artist |
 | `backend/app/services/retrieval_service.py` | Пул: search, tops, similar, discovered, feedback expand |
-| `backend/app/utils/quality.py` | Pre-filter: SEO, genre-as-title, mood-keyword, hard helpers |
+| `backend/app/utils/quality/` | Pre-filter: SEO, genre-as-title, mood-keyword, hard helpers (`spurious.py` и др.) |
+| `backend/app/utils/playlist_filters.py` | exclude_artists / exclude_languages для generate |
+| `backend/app/services/playlist_scoring.py` | rank → select → feedback expand |
 | `backend/app/utils/scoring/` | Embedding, floors, diversity, rank adjustments, two-phase select |
 | `backend/app/utils/mood_tokens.py` | Общий mood-лексикон (search bait + title demote) |
 | `backend/app/utils/search_queries.py` | Блок generic SEO + mood-bait search-фраз |
@@ -91,7 +93,7 @@ user prompt
 
 ---
 
-## Pre-filter (quality.py) — что уже есть
+## Pre-filter (`utils/quality/`) — что уже есть
 
 **Универсальные правила (не привязка к промпту):**
 

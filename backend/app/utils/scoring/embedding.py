@@ -63,11 +63,7 @@ def fallback_scores(
         if track_genre and any(genre in track_genre or track_genre in genre for genre in genres):
             score += 1.0
         artists = artist_tokens(track)
-        if any(
-            artist_matches_reference(artist, ref)
-            for artist in artists
-            for ref in ref_artists
-        ):
+        if any(artist_matches_reference(artist, ref) for artist in artists for ref in ref_artists):
             score += 0.5
         if hard_references_in_artists(track, profile):
             score += 0.15

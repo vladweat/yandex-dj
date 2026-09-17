@@ -93,7 +93,7 @@
 Для embedding используется компактная форма `embedding_passport()` — `{title}. {artists}. {genre}` (меньше токенов, быстрее encode).
 
 **Алгоритм:**
-1. Pre-filter SEO/мусор (`quality.py`) → clean-пул
+1. Pre-filter SEO/мусор (`utils/quality/`) → clean-пул
 2. Batch-эмбеддинг query + паспортов (`sentence-transformers`, E5 `query:` / `passage:`); `SCORING_EMBED_LIMIT=0` = весь пул
 3. Cosine similarity (`numpy`) + soft reference anchor boost (+0.03)
 4. Select: top-median gap → elbow → soft/tail fill → diversity + cap якорей ~60%
