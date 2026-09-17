@@ -69,8 +69,6 @@ def with_retrieval_tier(
 ) -> list[TrackCandidate]:
     """Пометить треки источником; при merge в normalize_pool сохранится max tier."""
     return [
-        track
-        if track.retrieval_tier >= tier
-        else track.model_copy(update={"retrieval_tier": tier})
+        track if track.retrieval_tier >= tier else track.model_copy(update={"retrieval_tier": tier})
         for track in tracks
     ]

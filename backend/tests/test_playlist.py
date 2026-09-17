@@ -426,7 +426,7 @@ async def test_playlist_service_feedback_uses_rank_pool_merge() -> None:
         llm=llm, retrieval=retrieval, scoring=scoring, yandex=yandex, repo=repo
     )
     with patch(
-        "app.services.playlist_service.non_anchor_artists_from_ranked",
+        "app.services.playlist_scoring.non_anchor_artists_from_ranked",
         return_value=["New Band"],
     ):
         result = await service.generate(

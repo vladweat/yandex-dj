@@ -27,9 +27,7 @@ def apply_mood_title_demote(
     if penalty <= 0 or not ranked:
         return ranked
     profile_mood = {
-        token
-        for tag in profile.mood_tags
-        for token in re.findall(r"[a-z0-9]+", tag.lower())
+        token for tag in profile.mood_tags for token in re.findall(r"[a-z0-9]+", tag.lower())
     }
     demote_tokens = profile_mood & MOOD_TITLE_DEMOTE_TOKENS
     if not demote_tokens:
@@ -110,11 +108,7 @@ def apply_library_artist_boost(
 
     boosted: list[tuple[TrackCandidate, float]] = []
     for track, score in ranked:
-        if any(
-            artist_matches_reference(artist, ref)
-            for artist in track.artists
-            for ref in refs
-        ):
+        if any(artist_matches_reference(artist, ref) for artist in track.artists for ref in refs):
             score = min(1.0, score + delta)
         boosted.append((track, score))
     boosted.sort(key=lambda item: item[1], reverse=True)

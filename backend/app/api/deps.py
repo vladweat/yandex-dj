@@ -18,11 +18,17 @@ from app.services.metrics_service import MetricsService
 from app.services.playlist_service import PlaylistService
 from app.services.retrieval_service import RetrievalService
 from app.services.scoring_service import ScoringService
+from app.services.service_factory import (
+    build_llm_service,
+    build_playlist_service,
+    build_retrieval_service,
+    build_scoring_service,
+    build_yandex_music_service,
+    get_track_cache,
+)
 from app.services.track_cache import TrackCacheService
 from app.services.yandex_account_service import YandexAccountService
 from app.services.yandex_music_service import YandexMusicService
-
-_track_cache: TrackCacheService | None = None
 
 
 def get_health_service() -> HealthService:
@@ -30,7 +36,7 @@ def get_health_service() -> HealthService:
 
 
 def get_yandex_music_service() -> YandexMusicService:
-    return YandexMusicService()
+    return build_yandex_music_service()
 
 
 def get_yandex_account_service(
@@ -40,25 +46,22 @@ def get_yandex_account_service(
 
 
 def get_llm_service() -> LLMService:
-    return LLMService()
+    return build_llm_service()
 
 
-def get_track_cache() -> TrackCacheService:
-    global _track_cache
-    if _track_cache is None:
-        _track_cache = TrackCacheService()
-    return _track_cache
+def get_track_cache_service() -> TrackCacheService:
+    return get_track_cache()
 
 
 def get_retrieval_service(
     yandex: YandexMusicService = Depends(get_yandex_music_service),
-    cache: TrackCacheService = Depends(get_track_cache),
+    cache: TrackCacheService = Depends(get_track_cache_service),
 ) -> RetrievalService:
-    return RetrievalService(yandex=yandex, cache=cache)
+    return build_retrieval_service(yandex=yandex, cache=cache)
 
 
 def get_scoring_service() -> ScoringService:
-    return ScoringService()
+    return build_scoring_service()
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -90,18 +93,8 @@ async def require_metrics_token(
 
 def get_playlist_service(
     db: AsyncSession = Depends(get_db_session),
-    llm: LLMService = Depends(get_llm_service),
-    retrieval: RetrievalService = Depends(get_retrieval_service),
-    scoring: ScoringService = Depends(get_scoring_service),
-    yandex: YandexMusicService = Depends(get_yandex_music_service),
 ) -> PlaylistService:
-    return PlaylistService(
-        llm=llm,
-        retrieval=retrieval,
-        scoring=scoring,
-        yandex=yandex,
-        repo=PlaylistGenerationRepository(db),
-    )
+    return build_playlist_service(db)
 
 
 async def get_auth_service(

@@ -94,12 +94,10 @@ class ScoringService:
             profile,
             diversity=diversity,
             max_per_artist=(
-                None if diversity == "high" else settings.max_tracks_per_artist
+                None if diversity == "high" else settings.scoring.max_tracks_per_artist
             ),
         )
-        tracks = [
-            ScoredTrack.from_candidate(track, score) for track, score in selection.tracks
-        ]
+        tracks = [ScoredTrack.from_candidate(track, score) for track, score in selection.tracks]
         return tracks, selection.shortfall
 
     def _rank_pool_sync(
@@ -189,7 +187,7 @@ class ScoringService:
 
         pool = candidates_for_embedding(
             candidates,
-            limit=settings.scoring_embed_limit,
+            limit=settings.scoring.embed_limit,
         )
         prompt_text = build_prompt_text(profile, user_prompt)
         query = f"query: {prompt_text}"
@@ -198,7 +196,7 @@ class ScoringService:
         try:
             embeddings = model.encode(
                 [query, *passages],
-                batch_size=settings.embedding_batch_size,
+                batch_size=settings.scoring.batch_size,
                 show_progress_bar=False,
                 normalize_embeddings=True,
             )

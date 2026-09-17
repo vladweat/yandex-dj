@@ -54,9 +54,7 @@ def test_resolve_hard_from_prompt_mentions() -> None:
 
 
 def test_resolve_hard_uses_declared_field() -> None:
-    profile = _profile().model_copy(
-        update={"hard_reference_artists": ["$uicideboy$", "Bones"]}
-    )
+    profile = _profile().model_copy(update={"hard_reference_artists": ["$uicideboy$", "Bones"]})
     hard = resolve_hard_reference_artists(profile, "что угодно")
     assert hard == ["$uicideboy$", "Bones"]
 

@@ -108,6 +108,7 @@ FEW_SHOT_EXAMPLES: list[tuple[str, MusicProfile]] = [
     ),
 ]
 
+
 def build_messages(user_prompt: str) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
     for example_prompt, profile in FEW_SHOT_EXAMPLES:

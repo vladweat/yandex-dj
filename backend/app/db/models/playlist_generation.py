@@ -14,9 +14,7 @@ if TYPE_CHECKING:
 
 class PlaylistGeneration(Base):
     __tablename__ = "playlist_generations"
-    __table_args__ = (
-        Index("ix_playlist_generations_user_id_created_at", "user_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_playlist_generations_user_id_created_at", "user_id", "created_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(

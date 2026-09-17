@@ -79,11 +79,7 @@ def resolve_hard_reference_artists(
     if not refs:
         return []
 
-    declared = [
-        name.strip()
-        for name in profile.hard_reference_artists
-        if name.strip()
-    ]
+    declared = [name.strip() for name in profile.hard_reference_artists if name.strip()]
     # Только пересечение с reference_artists (порядок declared).
     ref_by_compact = {_compact(name): name for name in refs}
     hard: list[str] = []
