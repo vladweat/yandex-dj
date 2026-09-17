@@ -6,7 +6,7 @@
 
 | Область | Состояние |
 |---------|-----------|
-| Документация | ✅ SPEC, STACK, ARCHITECTURE, API, LLM_SCHEMA, FRONTEND, PLAYLIST_QUALITY |
+| Документация | ✅ SPEC, STACK, ARCHITECTURE, API, LLM_SCHEMA, FRONTEND, PLAYLIST_QUALITY, **PRODUCT** |
 | Окружение | ✅ `make venv` — venv + модель e5-base + libgomp |
 | Docker | ✅ `prompt-dj-api` + `prompt-dj-db` (PostgreSQL 15) + Redis 7 + frontend |
 | FastAPI | ✅ `/api/v1/health` → `200 ok` |
@@ -16,9 +16,10 @@
 | Качество плейлистов | ✅ этап 5.5: P0/P1/P2 — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) |
 | Продукт (этап 6) | ✅ история / реген / profile / опции / UX / CI |
 | CI | ✅ `.github/workflows/ci.yml` — ruff + pytest + tsc/vitest |
-| Техдолг | § «Техдолг»: C2 expand unify / docs drift / FE DRY |
+| Техдолг A/B/C | ✅ кроме C4 (`quality.py` при SEO) |
+| **Следующий фокус** | [PRODUCT.md](PRODUCT.md): **P0 metrics** → P1 бот / listening graph |
 
-**MVP, этап 5.5 и этап 6 закрыты.** Фокус: инженерия (C2+) → этап 7 backlog.
+**MVP, этап 5.5 и этап 6 закрыты.** Ядро не трогать без регресса golden. Фокус: **product metrics → канал → персонализация Яндекса**.
 
 ---
 
@@ -204,10 +205,10 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 - [x] **P1:** хвост без embedding-мусора (Hauvy и т.п.); cap якорей ~60%
 - [x] **P2:** latency budget 7–12 сек (`SCORING_EMBED_LIMIT` / меньше double-embed)
 
-**Handoff для агента:** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — не добавлять regex под промпт.  
+**Handoff для агента:** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — не добавлять regex под промпт; named-artist кейс + бэклог Q1–Q5 и выводы по preprocess — там же (2026-09-17).  
 **UI-тест:** [FRONTEND.md](FRONTEND.md) § «Ручной тест UI».
 
-**Порядок:** техдолг (опции regen/history, feedback-тесты) → этап 7.
+**Дальше:** продуктовый бэклог — [PRODUCT.md](PRODUCT.md) (P0 metrics → P1 канал / listening graph).
 
 ---
 
@@ -223,59 +224,93 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 - [x] **Опции генерации** — `exclude_artists`, `instrumental_only`, `diversity=high`
 - [x] **UX-мелочи** — prefill `?prompt=…`, копирование ссылки+промпта, «API недоступен»
 - [x] **CI** — `.github/workflows/ci.yml`: `ruff` + `pytest` + `tsc` / vitest
-- [x] **Golden-промпты** — `tests/test_golden_prompts.py` (kitchen / coding / synthwave, mock scores)
+- [x] **Golden-промпты** — `tests/test_golden_prompts.py` (7 сценариев, sync с `SAMPLE_PROMPTS`; CI = регресс-алерт)
 - [x] Frontend-тесты (vitest) на auth-gates и форму генерации
 
 Не делать на этом этапе: новые vector DB, переписывание UI «с нуля», regex под конкретные промпты.
 
 **Миграция:** `a1b2c3d4e5f6_add_playlist_generations` — `make migrate`.
 
-**Долг после этапа 6** (не блокер закрытия): см. § «Техдолг» → продукт / инженерия.
-
 ---
 
-## Этап 7. Backlog (после 5.5 + техдолга)
+## Этап 7+. Продуктовый бэклог (после MVP)
 
-- [ ] Telegram-бот (`aiogram`) — тот же API
-- [ ] BPM-анализ (`librosa`) — post-select reorder по флагу; 30-сек превью + кэш; **не** в hot path по умолчанию
-- [ ] Анализ lyrics (`tracks_lyrics`) — «без слов» / NSFW-фильтр
-- [ ] AI-обложка (Stable Diffusion / Flux)
-- [ ] Celery/Arq — только если генерация стабильно > ~15 сек или нужна очередь (в т.ч. BPM)
+Канон: **[PRODUCT.md](PRODUCT.md)** — ICP, metrics, P0–P3, DoD, «не сейчас».
+
+Краткий чеклист (статусы синхронизировать с PRODUCT.md):
+
+### P0 — видеть продукт
+
+- [x] **P0.1** Product metrics (latency, selected==N, clean, warnings, regen vs new, diversity)
+- [x] **P0.2** Regen / return-7d — [docs/analytics/product_metrics.sql](analytics/product_metrics.sql)
+- [x] **P0.3** Like / dislike на результат
+- [x] **P0.4** Отчёт p50/p95 latency, % full-N, warnings, regen — `GET /api/v1/metrics/product` + [analytics/product_metrics.sql](analytics/product_metrics.sql)
+- [x] **P0.5** Golden 7 промптов + UI checklist — `tests/test_golden_prompts.py`, [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) § Golden UI checklist
+
+### P1 — рост и дифференциатор
+
+- [ ] **P1.1** Telegram-бот (`aiogram`) — тот же generate API
+- [x] **P1.2** Галерея промптов → `/?prompt=…`
+- [x] **P1.3** Персонализация: likes / recently played Яндекса (soft bias)
+- [x] **P1.4** Онбординг (ожидание 7–20 сек + 3 ситуации)
+- [x] **P1.5** Soft-квоты N генераций/сутки
+
+### P2 — pain и polish
+
+- [ ] **P2.1** Lyrics: «без слов» / NSFW
+- [ ] **P2.2** AI-обложка
+- [ ] **P2.3** Шаринг промпт+ссылка с UTMs
+- [ ] **P2.4** Выкинуть / заменить трек без полной реген
+- [ ] **P2.5** Мягкий показ latency («Ещё вариант — без LLM»)
+
+### P3 — по триггеру
+
+- [ ] **P3.1** BPM (`librosa`) — только по флагу
+- [ ] **P3.2** Celery/Arq — если p95 ≫ 20 сек или очередь бота
+- [ ] **P3.3** Hard rate-limit Яндекс + backoff UX
+- [ ] **P3.4** Freemium / Pro
+- [ ] **P3.5** White-label / B2B
+
+**Порядок:** P0 → P1.1∥P1.4 → P1.5 → P1.3 → P1.2 → P2 → P3 по триггеру.
+
+**Не сейчас:** multi-catalog, org-mode, перепись UI, редакционка, монетизация «Ещё вариант», regex под жанр.
 
 ---
 
 ## Техдолг
 
-Актуально на 2026-09-15. Качество/latency детально — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md).
+Актуально на 2026-09-17. Качество/latency + бэклог Q1–Q5 — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md). Продукт — [PRODUCT.md](PRODUCT.md).
 
-### Приоритет A — качество и latency (этап 5.5)
+### Приоритет A — качество и latency (этап 5.5) ✅
 
 | # | Что | Где | Зачем |
 |---|-----|-----|--------|
-| A1 | ~~Embedding false positives в хвосте~~ | `utils/scoring.py` | ✅ `filter_by_top_median_gap` (медиана топ-10 − 0.15) |
+| A1 | ~~Embedding false positives в хвосте~~ | `utils/scoring.py` | ✅ `filter_by_top_median_gap` |
 | A2 | ~~Cap якорей ~60% плейлиста~~ | `select_playlist_tracks` | ✅ `max_anchor_tracks` |
-| A3 | ~~Double-embed на feedback~~ | `playlist_service` / `rank_pool_merge` | ✅ encode только новых кандидатов |
-| A4 | ~~`SCORING_EMBED_LIMIT` drift~~ | `.env` / config | ✅ `0` везде (весь clean-пул) |
+| A3 | ~~Double-embed на feedback~~ | `rank_pool_merge` | ✅ encode только новых |
+| A4 | ~~`SCORING_EMBED_LIMIT` drift~~ | `.env` / config | ✅ `0` везде |
 
-### Приоритет B — продукт (дыры этапа 6)
+### Приоритет B — продукт (дыры этапа 6) ✅
 
 | # | Что | Где | Зачем |
 |---|-----|-----|--------|
-| B1 | ~~«Ещё вариант» сбрасывает опции~~ | `playlist-result.tsx` | ✅ берёт `options` из ответа |
-| B2 | ~~«Повторить» / history не восстанавливают options~~ | API + `playlist-history.tsx` | ✅ `options` в history/get/generate |
-| B3 | ~~`PIPELINE_TIMEOUT_SEC` мёртв~~ | endpoint + UI abort | ✅ `asyncio.wait_for` → 504; Cancel в форме |
-| B4 | ~~`exclude_artists` silent no-op~~ | `apply_exclude_artists` | ✅ `warnings[]` в ответе + toast |
+| B1 | ~~«Ещё вариант» сбрасывает опции~~ | result + `options` | ✅ |
+| B2 | ~~History не восстанавливает options~~ | API + history | ✅ |
+| B3 | ~~`PIPELINE_TIMEOUT_SEC` мёртв~~ | endpoint + abort | ✅ |
+| B4 | ~~`exclude_artists` silent no-op~~ | `warnings[]` | ✅ |
 
 ### Приоритет C — инженерия
 
 | # | Что | Где | Зачем |
 |---|-----|-----|--------|
-| C1 | ~~Нет тестов feedback-path~~ | `tests/test_playlist.py` | ✅ `rank_pool_merge` на shortfall |
-| C2 | ~~Дубль discovered vs feedback expand~~ | `retrieval_service.py` | ✅ общий `_expand_by_artist_names` |
-| C3 | ~~Дубль generate + error handling~~ | form / result / utils | ✅ `classifyGenerateApiError` + options helpers |
-| C4 | Размер `quality.py` (~445) | `utils/quality.py` | Не срочно; при SEO-правке сплит |
+| C1 | ~~Нет тестов feedback-path~~ | `test_playlist.py` | ✅ |
+| C2 | ~~Дубль discovered vs feedback expand~~ | `retrieval_service` | ✅ `_expand_by_artist_names` |
+| C3 | ~~Дубль generate error handling~~ | form / result / utils | ✅ |
+| C4 | Размер `quality.py` (~445) | `utils/quality.py` | При SEO-правке — сплит |
+| C5 | Cost-per-playlist (LLM tokens + # Yandex calls) | logs / metrics | Вместе с PRODUCT P0.1 / P1.5 |
+| C6 | E2E smoke vs staging Яндекс в CI | optional | Когда будет test-аккаунт |
 
-**Порядок работ:** eng debt C2–C3 ✅ → C4 при необходимости. Этап 7 — backlog.
+**Порядок:** PRODUCT P0–P1; C4/C5 по касательной.
 
 ---
 

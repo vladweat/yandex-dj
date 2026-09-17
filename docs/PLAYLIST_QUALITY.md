@@ -1,23 +1,28 @@
 # Качество плейлистов — статус и handoff
 
 > **Для следующего агента.** Читать перед любыми правками retrieval/scoring/quality.  
-> Обновлено: 2026-09-15 — этап 5.5 P1/P2 ✅; этап 6 ✅; фокус C2 expand / eng debt.
+> Обновлено: 2026-09-17 — live-кейс named-artist (Bones); бэклог качества ниже; продукт — [PRODUCT.md](PRODUCT.md).
 
 ## TL;DR
 
 | Что | Статус |
 |-----|--------|
 | End-to-end пайплайн | ✅ `POST /playlists/generate` → 200, ссылка, треки |
-| Frontend для теста | ✅ `/` — форма + таблица + `pool_stats` (без «Скоро») |
+| Frontend для теста | ✅ `/lab` — full форма + таблица + `pool_stats`; `/` — пользовательский UI |
 | Промпт без артистов | ✅ LLM подбирает якоря, embedding по user prompt |
 | SEO pre-filter | ✅ Универсальный (не список cooking/sleep) |
 | Топ релевантности | ✅ kitchen: Parcels / Khruangbin / Men I Trust / Camyo |
 | **Полнота N треков** | ✅ discovered similar + frequency-rank; tail fill без `score[N-1]` |
 | `pool_stats` в ответе | ✅ `{raw, clean, selected}` |
-| Latency 7–12 сек | ✅ Feedback: incremental `rank_pool_merge`; `SCORING_EMBED_LIMIT=0` |
-| Следующий фокус | C4 `quality.py` при SEO-правке; этап 7 backlog — [DEVELOPMENT.md](DEVELOPMENT.md) |
+| Хвост / якоря / latency | ✅ gap, cap 60%, `rank_pool_merge`, `SCORING_EMBED_LIMIT=0` |
+| Situational golden | ✅ сильный cold-start (кухня/код/сон…) |
+| Named-artist + constraints | ⚠️ топ ок, хвост/diversity слабые — см. [кейс Bones](#live-кейс-named-artist-2026-09-17) |
+| Следующий фокус | Продукт — [PRODUCT.md](PRODUCT.md); пайплайн **только** с регрессом golden + пункты [бэклога качества](#бэклог-качества-после-mvp) |
 
-**Не ходить по кругу:** не добавлять regex под конкретный промпт/жанр.
+**Не ходить по кругу:** не добавлять regex под конкретный промпт/жанр.  
+**Граница качества (продукт):** «достаточно хорошо, чтобы слушать целиком», не редакционка.
+
+**Краткий диагноз (2026-09-17):** система сильна на situational cold-start; слабее на **named-artist + constraints + diversity**, потому что LLM раздувает якоря/`search_queries`, а при плоских scores ranking не отделяет сцену от lexical SEO. Максимальный ROI — **входы в пул** (queries + SEO filter + budget якорей), не ещё один проход retrieval и не rewrite user prompt.
 
 ---
 
@@ -141,7 +146,7 @@ user prompt
 
 1. ✅ Frequency-rank discovered + similar seeds.
 2. ✅ Scoring feedback при `selected < N`.
-3. ✅ `pool_stats` в API + badges во frontend.
+3. ✅ `pool_stats` в API + badges в `/lab`.
 4. ✅ Tail fill без `score[N-1]` — kitchen `n=25`, `clean≈275`.
 5. Если API throttled — увеличить `yandex_rate_limit_delay_sec`, не убирать фильтры.
 
@@ -152,12 +157,84 @@ user prompt
 
 ### P2 — Latency ✅
 
-1. ✅ Frontend показывает `tracks` + `similarity_score` + `pool_stats`.
+1. ✅ `/lab` показывает `tracks` + `similarity_score` + `pool_stats` (на `/` — без debug-метрик).
 2. ✅ Double-embed убран: `rank_pool_merge` на feedback.
 3. ✅ `SCORING_EMBED_LIMIT=0` в `.env` / example / config.
 4. ✅ Референсный curl живёт здесь и в [API.md](API.md).
 
-**Этап 6 (продукт/CI) ✅.** Дальше: техдолг B/C — [DEVELOPMENT.md](DEVELOPMENT.md) § «Техдолг».
+**Этап 6 (продукт/CI) ✅.** Дальше: [PRODUCT.md](PRODUCT.md) (metrics → бот → listening graph). Пайплайн не крутить без регресса golden; качество named-artist — секция ниже.
+
+---
+
+## Live-кейс: named-artist (2026-09-17)
+
+**Промпт:** «хочется грустить под американский реп, по типу Bones или суисайд бойз, исключи русские треки, а также сделай плейлист разнообразным»
+
+**`/lab`:** `raw=300`, `clean=250`, `selected=25` — пул здоровый; проблема не в shortfall.
+
+| Поле профиля | Значение |
+|--------------|----------|
+| Жанры | hip hop, trap, emo rap |
+| Mood | sad, melancholic, introspective |
+| Референсы | Bones, $uicideboy$, Night Lovell, Lil Peep |
+| Search | `Bones sad rap` · `$uicideboy$ emotional` · … · `Bones` |
+
+**Scores:** 0.881 → 0.830 (почти плоско). Топ: Bones×5, $B×5, Night Lovell×4, Lil Peep×1 ≈ **60% cap якорей**. Хвост: `Sad Rap` (Musical Kay), Melancholy Mø, Token, Krayzie Bone, `Get Est Rap` (DISTXRD).
+
+| Сработало | Сломалось |
+|-----------|-----------|
+| Сцена и якоря в топе | Токсичный query `Bones sad rap` → SEO в пул и в ranking |
+| `clean=250` | 4 равноправных якоря съели diversity / cap |
+| Нет явных RU-артистов | «разнообразным» не → `diversity=high`; «исключи русские» не first-class |
+| | Flat tail: lexical SEO и коллизия имён (Krayzie Bone ≠ BONES) |
+
+**Вердикт:** профиль и топ по смыслу верные; «всё верно» — нет. Слушать ~1–12/15; дальше шум. При жирном clean система *могла* выбрать лучше.
+
+---
+
+## Видение: где ломается класс named-artist
+
+```
+LLM понял сцену ✅
+    → search_queries с mood+artist ❌  → SEO в raw
+    → 4–8 reference_artists как hard-якоря ❌ → 60% слотов
+constraints в NL («без русских», «разнообразно») ❌ → не опции
+embedding + mood-слова ✅ для атмосферы
+    → title «Sad Rap» / artist «Melancholy …» получают высокий cosine ❌
+score plateau ❌ → tail = следующий по cosine, не «лучший из discovered»
+```
+
+Situational golden (без имён) этим почти не бьётся — поэтому CI зелёный, а live named-artist выглядит слабо.
+
+---
+
+## Бэклог качества (после MVP)
+
+По рычагу × риск регресса golden. **Не** regex под cloud rap / Bones.
+
+| # | Доработка | Зачем | Риск |
+|---|-----------|-------|------|
+| **Q1** | Гигиена `search_queries` (LLM few-shot + post-validate): запрет `{artist}+mood/genre`, `{mood} rap`; предпочитать имя / сцена / «like X» | Убрать Musical Kay-класс из пула | Низкий, если kitchen queries не ломаем |
+| **Q2** | Structural SEO: title ≈ genre+mood (`Sad Rap`, `Get Est Rap`); mood-keyword artist (`Melancholy …`) — расширение уже существующих правил; при правке — C4 split `quality.py` | Хвост при `clean≫N` | Средний — нужен golden + live |
+| **Q3** | Hard vs soft anchors: из промпта / топ-2 = boost+slots; остальные refs — только retrieval | «Bones/$B + разнообразно» без стены из 15 треков | Средний — контракт `MusicProfile` / SPEC 4–8 refs |
+| **Q4** | Score plateau: при малом размахе топ-N предпочитать discovered/similar не-якорных; опц. demote lexical overlap title↔mood | Ghostemane остаётся, Token/SEO — нет | Выше — только + artist-named golden |
+| **Q5** | Constraints → опции: `exclude_languages` / map «разнообразн*» → `diversity=high` | Частый RU-каталожный pain | Новый контракт API/схемы |
+
+**Порядок внедрения:** Q1 → Q2 → Q3; Q4 после golden на named-artist; Q5 отдельным контрактом.
+
+**Не в приоритете качества:** ещё больший raw-пул; C4 ради рефакторинга; BPM/lyrics (PRODUCT P2); rewrite user prompt как основной рычаг.
+
+---
+
+## Предобработка user prompt — выводы
+
+| Подход | Помогает? | Комментарий |
+|--------|-----------|-------------|
+| **Rewrite** текста промпта (второй LLM) | Слабо | В кейсе Bones LLM уже понял смысл; +latency/cost, drift, риск golden |
+| **Constraint extraction** → опции / hard-soft anchors | Да | «исключи русские», «разнообразно», явные артисты → структура, сырой текст для embedding можно оставить |
+| Preprocess **вместо** Q1–Q2 | Нет | Токсичные `search_queries` и SEO-title правятся на профиле / pre-filter |
+
+Итог: тупой rewrite — низкий ROI. Лёгкий NLU → constraints + hard/soft anchors — рычаг **вместе** с валидацией `MusicProfile`, не вместо неё.
 
 ---
 
@@ -172,6 +249,7 @@ user prompt
 | Tail fill `min_score=None` | Заливал metal/мусор → заменён tail floor |
 | Tail `max(..., score[N-1])` | Shortfall 19/25 при якорях в топе → убран |
 | Только больше regex | Пул не растёт, топ уже хорош |
+| Rewrite user prompt как фикс качества | Отклонён как основной рычаг (см. выше) |
 
 ---
 
@@ -184,16 +262,38 @@ make test
 ```
 
 Критичные: `tests/test_quality.py`, `tests/test_scoring.py`, `tests/test_retrieval.py`, `tests/test_playlist.py`, `tests/test_golden_prompts.py`.  
-Долг: нет тестов shortfall → feedback expand → re-rank ([DEVELOPMENT.md](DEVELOPMENT.md) C1).
+Feedback-path: `test_playlist_service_feedback_uses_rank_pool_merge` ✅.  
+Golden: **7** промптов (kitchen…rain); CI fail = регресс-алерт (P0.5 ✅). Sync с frontend `SAMPLE_PROMPTS`.
 
 После правок API: `docker compose restart api`.  
 Frontend: `make up-frontend` или hot-reload контейнера `frontend`.
 
 ---
 
+## Golden UI checklist
+
+После правок quality/retrieval/scoring — прогнать unit golden (`make test`) и хотя бы 2–3 live-сценария из таблицы.
+
+| # | Промпт (кнопка SAMPLE на `/lab`) | Ожидание live |
+|---|------------------------|---------------|
+| 1 | под настроение пока варю макароны | `selected==25`, `clean≥40`, топ без SEO «vibe for cooking» |
+| 2 | спокойная музыка для кодинга поздней ночью | спокойный фокус; мало/нет агрессивного вокала |
+| 3 | саундтрек для ночной поездки в стиле синтвейв | synthwave/retrowave в топе, не каверы «Nightcall» |
+| 4 | энергичная музыка для пробежки | высокий темп/энергия; без sleep/ambient доминирования |
+| 5 | тихая музыка чтобы уснуть | тихий эмбиент; без party/workout |
+| 6 | танцевальный плейлист для вечеринки дома | danceable; без sleep |
+| 7 | грустная музыка под дождь у окна | melancholy; без workout/party |
+
+На каждом (`/lab`): latency в районе 7–12 сек (guardrail: p95 не ≫ 20); «Ещё вариант» работает; like/dislike кликается; смотреть `pool_stats` / scores. На `/` — только пользовательский результат (Яндекс + оценка).
+
+Регресс-алерт: падение `tests/test_golden_prompts.py` в CI; вручную — расхождение с таблицей выше.
+
+---
+
 ## Связанные документы
 
 - [SPEC.md](SPEC.md) §4.3–4.4 — требования retrieval/scoring; §7–8 roadmap
-- [API.md](API.md) — контракт `POST /playlists/generate` + `pool_stats`
+- [PRODUCT.md](PRODUCT.md) — продуктовый бэклог после MVP
+- [API.md](API.md) — контракт `POST /playlists/generate` + `pool_stats` / `options` / `warnings`
 - [FRONTEND.md](FRONTEND.md) — ручной тест через UI
-- [DEVELOPMENT.md](DEVELOPMENT.md) — этапы 5.5 (качество) → техдолг → 7 (backlog); этап 6 ✅
+- [DEVELOPMENT.md](DEVELOPMENT.md) — этапы 0–6 ✅; чеклист 7+; техдолг
