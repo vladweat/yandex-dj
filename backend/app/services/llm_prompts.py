@@ -20,6 +20,8 @@ SYSTEM_PROMPT = """\
   study beats, workout playlist, music for, best tracks
 - reference_artists: 4–8 артистов-якорей для retrieval (подбираешь по вайбу, если пользователь
   не назвал имена)
+- hard_reference_artists: 1–3 артиста, которых пользователь ЯВНО назвал («Bones», «как $uicideboy$»).
+  Только подмножество reference_artists. Если имён нет — оставь [].
 - playlist_title: 2–4 слова на языке запроса
 - playlist_description: 1–2 предложения об атмосфере
 - primary_genres / mood_tags: на английском
@@ -89,8 +91,21 @@ FEW_SHOT_EXAMPLES: list[tuple[str, MusicProfile]] = [
             target_track_count=25,
         ),
     ),
+    (
+        "грустный американский реп по типу Bones, без русских треков, разнообразный",
+        MusicProfile(
+            playlist_title="Cloud Gloom",
+            playlist_description="Меланхоличный американский underground rap",
+            primary_genres=["hip hop", "trap", "emo rap"],
+            mood_tags=["sad", "melancholic", "introspective"],
+            vocal_type="vocal_only",
+            reference_artists=["Bones", "$uicideboy$", "Night Lovell", "Lil Peep"],
+            hard_reference_artists=["Bones"],
+            search_queries=["Bones", "$uicideboy$", "Night Lovell"],
+            target_track_count=25,
+        ),
+    ),
 ]
-
 
 def build_messages(user_prompt: str) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]

@@ -1,7 +1,7 @@
 # Качество плейлистов — статус и handoff
 
 > **Для следующего агента.** Читать перед любыми правками retrieval/scoring/quality.  
-> Обновлено: 2026-09-17 — Q1/Q2 ✅ (search hygiene + SEO Sad Rap); продукт — [PRODUCT.md](PRODUCT.md).
+> Обновлено: 2026-09-17 — Q1–Q5 ✅ (search hygiene, SEO, hard/soft anchors, plateau, language/diversity constraints).
 
 ## TL;DR
 
@@ -10,14 +10,14 @@
 | End-to-end пайплайн | ✅ `POST /playlists/generate` → 200, ссылка, треки |
 | Frontend для теста | ✅ `/lab` — full форма + таблица + `pool_stats`; `/` — пользовательский UI |
 | Промпт без артистов | ✅ LLM подбирает якоря, embedding по user prompt |
-| SEO pre-filter | ✅ Универсальный (не список cooking/sleep) |
+| SEO pre-filter | ✅ Универсальный (не список cooking/sleep) + Sad Rap / Melancholy |
 | Топ релевантности | ✅ kitchen: Parcels / Khruangbin / Men I Trust / Camyo |
 | **Полнота N треков** | ✅ discovered similar + frequency-rank; tail fill без `score[N-1]` |
 | `pool_stats` в ответе | ✅ `{raw, clean, selected}` |
-| Хвост / якоря / latency | ✅ gap, cap 60%, `rank_pool_merge`, `SCORING_EMBED_LIMIT=0` |
+| Хвост / якоря / latency | ✅ gap, cap 60% hard-якорей, `rank_pool_merge`, `SCORING_EMBED_LIMIT=0` |
 | Situational golden | ✅ сильный cold-start (кухня/код/сон…) |
-| Named-artist + constraints | ⚠️ топ ок; Q1/Q2 закрывают SEO-хвост; diversity/якоря — Q3 |
-| Следующий фокус | Продукт — [PRODUCT.md](PRODUCT.md); качество — **Q3** hard/soft anchors (+ golden); пайплайн только с регрессом golden |
+| Named-artist + constraints | ✅ Q1–Q5: search hygiene, SEO, hard/soft, plateau, `exclude_languages` / diversity hint |
+| Следующий фокус | Продукт — [PRODUCT.md](PRODUCT.md); пайплайн только с регрессом golden |
 
 **Не ходить по кругу:** не добавлять regex под конкретный промпт/жанр.  
 **Граница качества (продукт):** «достаточно хорошо, чтобы слушать целиком», не редакционка.
@@ -67,9 +67,10 @@ user prompt
     ↓ retrieval (search + artist tops + similar + discovered artists)
     ↓ pre-filter (quality.py — универсальный SEO/мусор)
     ↓ embedding (prompt + description + genres + mood; БЕЗ reference_artists в query)
-    ↓ +0.03 anchor boost (reference_artists в исполнителях)
-    ↓ select: gap(median top-10) → elbow → soft fill → tail → sort by score
-    ↓ diversity (2/3 обычно, 3 якорям, 5 якорям в tail) + cap якорей ~60%
+    ↓ +0.03 hard-anchor boost (`hard_reference_artists`; soft refs — только retrieval)
+    ↓ select: gap → mood-demote → plateau reorder → elbow → soft/tail fill → diversity
+    ↓ diversity (2/3 обычно, 3 hard-якорям, 5 hard в tail) + cap hard-якорей ~60%
+    ↓ prompt constraints: `разнообразн*` → diversity=high; `исключи русск*` → drop кириллицы
     ↓ [если selected < N] feedback: tops+similar лучших не-якорных → incremental re-score
     ↓ export
 ```
@@ -78,11 +79,12 @@ user prompt
 
 | Файл | Роль |
 |------|------|
-| `backend/app/services/llm_prompts.py` | Системный промпт, few-shot «макароны» |
+| `backend/app/services/llm_prompts.py` | Системный промпт, few-shot «макароны» / named-artist |
 | `backend/app/services/retrieval_service.py` | Пул: search, tops, similar, discovered, feedback expand |
-| `backend/app/utils/quality.py` | Pre-filter: SEO, genre-as-title, anchor-in-title |
-| `backend/app/utils/scoring.py` | Embedding query, elbow, fill, diversity, anchor boost |
-| `backend/app/utils/search_queries.py` | Блок generic SEO search-фраз |
+| `backend/app/utils/quality.py` | Pre-filter: SEO, genre-as-title, mood-keyword, hard helpers |
+| `backend/app/utils/scoring.py` | Embedding query, elbow, fill, diversity, hard boost, plateau |
+| `backend/app/utils/search_queries.py` | Блок generic SEO + mood-bait search-фраз |
+| `backend/app/utils/prompt_constraints.py` | Q3/Q5: hard anchors, diversity hint, exclude_languages |
 | `backend/app/core/config.py` | `min_clean_candidates`, `discovered_*`, `feedback_*` |
 | `frontend/src/features/playlist/*` | Форма генерации + результат для ручного теста |
 
@@ -217,11 +219,11 @@ Situational golden (без имён) этим почти не бьётся — �
 |---|-----------|-------|------|
 | **Q1** | Гигиена `search_queries` (LLM few-shot + post-validate): запрет `{artist}+mood/genre`, `{mood} rap`; предпочитать имя / сцена / «like X» | Убрать Musical Kay-класс из пула | ✅ 2026-09-17 |
 | **Q2** | Structural SEO: title ≈ genre+mood (`Sad Rap`, `Get Est Rap`); mood-keyword artist (`Melancholy …`) — расширение уже существующих правил; при правке — C4 split `quality.py` | Хвост при `clean≫N` | ✅ 2026-09-17 (без C4 split) |
-| **Q3** | Hard vs soft anchors: из промпта / топ-2 = boost+slots; остальные refs — только retrieval | «Bones/$B + разнообразно» без стены из 15 треков | Средний — контракт `MusicProfile` / SPEC 4–8 refs |
-| **Q4** | Score plateau: при малом размахе топ-N предпочитать discovered/similar не-якорных; опц. demote lexical overlap title↔mood | Ghostemane остаётся, Token/SEO — нет | Выше — только + artist-named golden |
-| **Q5** | Constraints → опции: `exclude_languages` / map «разнообразн*» → `diversity=high` | Частый RU-каталожный pain | Новый контракт API/схемы |
+| **Q3** | Hard vs soft anchors: из промпта / топ-2 = boost+slots; остальные refs — только retrieval | «Bones/$B + разнообразно» без стены из 15 треков | ✅ `hard_reference_artists` + scoring |
+| **Q4** | Score plateau: при малом размахе топ-N предпочитать discovered/similar не-якорных; опц. demote lexical overlap title↔mood | Ghostemane остаётся, Token/SEO — нет | ✅ plateau reorder + mood demote |
+| **Q5** | Constraints → опции: `exclude_languages` / map «разнообразн*» → `diversity=high` | Частый RU-каталожный pain | ✅ `prompt_constraints.py` + API field |
 
-**Порядок внедрения:** ~~Q1 → Q2~~ ✅ → Q3; Q4 после golden на named-artist; Q5 отдельным контрактом.
+**Порядок внедрения:** ~~Q1 → Q2 → Q3 → Q4 → Q5~~ ✅.
 
 **Не в приоритете качества:** ещё больший raw-пул; C4 ради рефакторинга; BPM/lyrics (PRODUCT P2); rewrite user prompt как основной рычаг.
 
