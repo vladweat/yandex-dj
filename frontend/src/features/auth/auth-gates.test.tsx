@@ -68,6 +68,18 @@ describe("AuthGate", () => {
     expect(replace).toHaveBeenCalledWith("/login?next=%2Fhealth");
   });
 
+  it("preserves query string in next (e.g. ?prompt=)", () => {
+    authState = { isAuthenticated: false, loading: false };
+    pathname = "/";
+    searchParams = new URLSearchParams("prompt=night+drive");
+    render(
+      <AuthGate>
+        <div>secret</div>
+      </AuthGate>,
+    );
+    expect(replace).toHaveBeenCalledWith("/login?next=%2F%3Fprompt%3Dnight%2Bdrive");
+  });
+
   it("renders children for authenticated users", () => {
     authState = { isAuthenticated: true, loading: false };
     render(
@@ -102,5 +114,22 @@ describe("GuestGate", () => {
     );
     expect(screen.getByText("Перенаправление…")).toBeTruthy();
     expect(replace).toHaveBeenCalledWith("/debug");
+  });
+
+  it("redirects authenticated users to next with prompt query", () => {
+    authState = { isAuthenticated: true, loading: false };
+    searchParams = new URLSearchParams("next=/?prompt=night%20drive");
+    render(
+      <GuestGate>
+        <div>login form</div>
+      </GuestGate>,
+    );
+    expect(replace).toHaveBeenCalledWith("/?prompt=night drive");
+  });
+});
+
+describe("postLoginPath with query", () => {
+  it("keeps prompt deep link", () => {
+    expect(postLoginPath("/?prompt=kitchen")).toBe("/?prompt=kitchen");
   });
 });

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.schemas.llm import MusicProfile
 
 DiversityMode = Literal["normal", "high"]
+FeedbackValue = Literal["like", "dislike"]
 
 
 class PlaylistGenerateRequest(BaseModel):
@@ -15,7 +16,12 @@ class PlaylistGenerateRequest(BaseModel):
     instrumental_only: bool = False
     exclude_artists: list[str] = Field(default_factory=list, max_length=20)
     diversity: DiversityMode = "normal"
+    use_library: bool = False
     source_id: uuid.UUID | None = None
+
+
+class PlaylistFeedbackRequest(BaseModel):
+    value: FeedbackValue | None = None
 
 
 class PlaylistTrackResponse(BaseModel):
@@ -37,6 +43,7 @@ class PlaylistGenerationOptions(BaseModel):
     instrumental_only: bool = False
     exclude_artists: list[str] = Field(default_factory=list)
     diversity: DiversityMode = "normal"
+    use_library: bool = False
 
 
 class PlaylistGenerateResponse(BaseModel):
@@ -50,6 +57,9 @@ class PlaylistGenerateResponse(BaseModel):
     profile: MusicProfile
     options: PlaylistGenerationOptions | None = None
     warnings: list[str] = Field(default_factory=list)
+    source_id: uuid.UUID | None = None
+    latency_ms: int | None = None
+    feedback: FeedbackValue | None = None
 
 
 class PlaylistHistoryItem(BaseModel):
@@ -60,9 +70,28 @@ class PlaylistHistoryItem(BaseModel):
     pool_stats: PlaylistPoolStats | None = None
     options: PlaylistGenerationOptions | None = None
     created_at: datetime
+    source_id: uuid.UUID | None = None
+    latency_ms: int | None = None
+    feedback: FeedbackValue | None = None
 
 
 class PlaylistHistoryResponse(BaseModel):
     items: list[PlaylistHistoryItem]
     limit: int
     offset: int
+
+
+class PlaylistFeedbackResponse(BaseModel):
+    id: uuid.UUID
+    feedback: FeedbackValue | None = None
+    feedback_at: datetime | None = None
+
+
+class PlaylistQuotaResponse(BaseModel):
+    """Soft-квота новых генераций за UTC-сутки. «Ещё вариант» не расходует."""
+
+    limit: int
+    used: int
+    remaining: int
+    unlimited: bool
+    resets_at: datetime

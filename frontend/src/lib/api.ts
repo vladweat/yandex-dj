@@ -6,9 +6,12 @@ import type {
 } from "@/types/auth";
 import type { HealthResponse } from "@/types/health";
 import type {
+  PlaylistFeedbackRequest,
+  PlaylistFeedbackResponse,
   PlaylistGenerateRequest,
   PlaylistGenerateResponse,
   PlaylistHistoryResponse,
+  PlaylistQuotaResponse,
 } from "@/types/playlist";
 import type { YandexStatusResponse } from "@/types/yandex";
 
@@ -43,6 +46,9 @@ async function parseError(response: Response): Promise<string> {
   try {
     const body = await response.json();
     if (typeof body.detail === "string") return body.detail;
+    if (body.detail && typeof body.detail === "object" && !Array.isArray(body.detail)) {
+      if (typeof body.detail.message === "string") return body.detail.message;
+    }
     if (Array.isArray(body.detail)) {
       return body.detail.map((item: { msg: string }) => item.msg).join(", ");
     }
@@ -167,6 +173,10 @@ export async function generatePlaylist(
   });
 }
 
+export async function fetchPlaylistQuota(): Promise<PlaylistQuotaResponse> {
+  return apiFetch<PlaylistQuotaResponse>("/playlists/quota");
+}
+
 export async function listPlaylists(
   limit = 20,
   offset = 0,
@@ -180,4 +190,14 @@ export async function listPlaylists(
 
 export async function getPlaylist(id: string): Promise<PlaylistGenerateResponse> {
   return apiFetch<PlaylistGenerateResponse>(`/playlists/${id}`);
+}
+
+export async function setPlaylistFeedback(
+  id: string,
+  body: PlaylistFeedbackRequest,
+): Promise<PlaylistFeedbackResponse> {
+  return apiFetch<PlaylistFeedbackResponse>(`/playlists/${id}/feedback`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 }

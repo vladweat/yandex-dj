@@ -1,7 +1,7 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, type ReactNode } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -15,16 +15,19 @@ function GateStatus({ label }: { label: string }) {
   );
 }
 
-export function AuthGate({ children }: { children: ReactNode }) {
+function AuthGateInner({ children }: { children: ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     if (loading || isAuthenticated) return;
-    const next = pathname && pathname !== "/login" ? `?next=${encodeURIComponent(pathname)}` : "";
-    router.replace(`/login${next}`);
-  }, [isAuthenticated, loading, pathname, router]);
+    if (!pathname || pathname === "/login") return;
+    const query = searchParams.toString();
+    const target = query ? `${pathname}?${query}` : pathname;
+    router.replace(`/login?next=${encodeURIComponent(target)}`);
+  }, [isAuthenticated, loading, pathname, router, searchParams]);
 
   if (loading) {
     return <GateStatus label="Загрузка…" />;
@@ -33,4 +36,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return <GateStatus label="Перенаправление на вход…" />;
   }
   return <div className="flex min-h-0 flex-1 flex-col">{children}</div>;
+}
+
+export function AuthGate({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<GateStatus label="Загрузка…" />}>
+      <AuthGateInner>{children}</AuthGateInner>
+    </Suspense>
+  );
 }

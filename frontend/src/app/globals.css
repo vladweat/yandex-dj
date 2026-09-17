@@ -1,17 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0f1a;
-  --foreground: #e2e8f0;
-  --card: #111827;
-  --card-foreground: #e2e8f0;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
+  --background: #080a0f;
+  --foreground: #f2f4f8;
+  --card: rgba(18, 22, 32, 0.72);
+  --card-foreground: #f2f4f8;
+  --muted: #151a24;
+  --muted-foreground: #8b93a7;
   --accent: #ffcc00;
-  --border: #1e293b;
-  --ok: #22c55e;
-  --error: #ef4444;
-  --radius: 0.75rem;
+  --accent-soft: rgba(255, 204, 0, 0.14);
+  --border: rgba(255, 255, 255, 0.08);
+  --ok: #3ecf8e;
+  --error: #ff6b6b;
+  --radius: 1rem;
+  --surface: rgba(255, 255, 255, 0.03);
+  --glow: rgba(255, 204, 0, 0.18);
 }
 
 @theme inline {
@@ -23,9 +26,11 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-border: var(--border);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Unbounded", ui-sans-serif, system-ui, sans-serif;
 }
 
 html {
@@ -33,15 +38,24 @@ html {
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
+  background-image:
+    radial-gradient(ellipse 80% 55% at 50% -15%, rgba(255, 204, 0, 0.11), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 100% 20%, rgba(70, 110, 180, 0.08), transparent 50%),
+    radial-gradient(ellipse 40% 35% at 0% 80%, rgba(255, 204, 0, 0.04), transparent 45%);
+  background-attachment: fixed;
   color: var(--foreground);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   touch-action: manipulation;
+}
+
+.font-display {
+  font-family: var(--font-display);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #334155 transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -54,6 +68,6 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
 }

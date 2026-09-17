@@ -6,6 +6,7 @@ import logging
 import re
 import time
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from yandex_music import ClientAsync
 
@@ -14,6 +15,7 @@ from app.core.exceptions import (
     ExportError,
     LLMError,
     NotFoundError,
+    QuotaExceededError,
     RetrievalError,
     ScoringError,
     YandexMusicError,
@@ -23,11 +25,14 @@ from app.repositories.playlist_generation_repository import PlaylistGenerationRe
 from app.schemas.llm import MusicProfile
 from app.schemas.playlist import (
     DiversityMode,
+    FeedbackValue,
+    PlaylistFeedbackResponse,
     PlaylistGenerateResponse,
     PlaylistGenerationOptions,
     PlaylistHistoryItem,
     PlaylistHistoryResponse,
     PlaylistPoolStats,
+    PlaylistQuotaResponse,
     PlaylistTrackResponse,
 )
 from app.schemas.scoring import ScoredTrack
@@ -37,6 +42,7 @@ from app.services.retrieval_service import RetrievalService, non_anchor_artists_
 from app.services.scoring_service import ScoringService
 from app.services.yandex_music_service import YandexMusicService
 from app.utils.quality import artist_matches_reference, artist_tokens, is_spurious_track
+from app.utils.scoring import apply_library_artist_boost
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +125,22 @@ def _options_from_row(raw: dict | None) -> PlaylistGenerationOptions | None:
         return None
 
 
+def _feedback_from_row(value: int | None) -> FeedbackValue | None:
+    if value == 1:
+        return "like"
+    if value == -1:
+        return "dislike"
+    return None
+
+
+def _feedback_to_int(value: FeedbackValue | None) -> int | None:
+    if value == "like":
+        return 1
+    if value == "dislike":
+        return -1
+    return None
+
+
 def filter_excluded_candidates(
     candidates: list[TrackCandidate],
     exclude_artists: list[str],
@@ -171,6 +193,7 @@ def generation_to_response(
     pool_stats = None
     if row.pool_stats is not None:
         pool_stats = PlaylistPoolStats.model_validate(row.pool_stats)
+    stored_warnings = row.warnings if isinstance(row.warnings, list) else []
     return PlaylistGenerateResponse(
         id=row.id,
         prompt=row.prompt,
@@ -181,7 +204,10 @@ def generation_to_response(
         pool_stats=pool_stats,
         profile=MusicProfile.model_validate(row.profile),
         options=_options_from_row(row.options),
-        warnings=list(warnings or ()),
+        warnings=list(warnings if warnings is not None else stored_warnings),
+        source_id=row.source_id,
+        latency_ms=row.latency_ms,
+        feedback=_feedback_from_row(row.feedback),
     )
 
 
@@ -200,6 +226,61 @@ class PlaylistService:
         self._yandex = yandex
         self._repo = repo
 
+    @staticmethod
+    def _utc_day_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
+        current = now or datetime.now(UTC)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=UTC)
+        else:
+            current = current.astimezone(UTC)
+        start = current.replace(hour=0, minute=0, second=0, microsecond=0)
+        resets_at = start + timedelta(days=1)
+        return start, resets_at
+
+    async def get_quota(self, user_id: uuid.UUID) -> PlaylistQuotaResponse:
+        limit = settings.daily_generation_limit
+        start, resets_at = self._utc_day_bounds()
+        if limit <= 0:
+            return PlaylistQuotaResponse(
+                limit=0,
+                used=0,
+                remaining=0,
+                unlimited=True,
+                resets_at=resets_at,
+            )
+        used = await self._repo.count_new_generations_since(user_id, since=start)
+        remaining = max(0, limit - used)
+        return PlaylistQuotaResponse(
+            limit=limit,
+            used=used,
+            remaining=remaining,
+            unlimited=False,
+            resets_at=resets_at,
+        )
+
+    async def _ensure_quota_available(
+        self,
+        user_id: uuid.UUID,
+        *,
+        source_id: uuid.UUID | None,
+    ) -> None:
+        # «Ещё вариант» не расходует soft-квоту (freemium-friendly).
+        if source_id is not None:
+            return
+        quota = await self.get_quota(user_id)
+        if quota.unlimited or quota.remaining > 0:
+            return
+        raise QuotaExceededError(
+            (
+                f"Дневной лимит генераций исчерпан ({quota.limit}/сутки). "
+                "«Ещё вариант» из истории всё ещё доступен."
+            ),
+            limit=quota.limit,
+            used=quota.used,
+            remaining=quota.remaining,
+            resets_at=quota.resets_at.isoformat(),
+        )
+
     async def generate(
         self,
         *,
@@ -211,10 +292,13 @@ class PlaylistService:
         user_id: uuid.UUID,
         exclude_artists: list[str] | None = None,
         diversity: DiversityMode = "normal",
+        use_library: bool = False,
         source_id: uuid.UUID | None = None,
     ) -> PlaylistGenerateResponse:
+        await self._ensure_quota_available(user_id, source_id=source_id)
         excludes = _normalize_excludes(exclude_artists or [])
         pipeline_started = time.perf_counter()
+        warnings: list[str] = []
 
         llm_started = time.perf_counter()
         if source_id is not None:
@@ -238,10 +322,38 @@ class PlaylistService:
             llm_ms = int((time.perf_counter() - llm_started) * 1000)
 
         profile, exclude_warnings = apply_exclude_artists(profile, excludes)
+        warnings.extend(exclude_warnings)
+
+        library_artists: list[str] = []
+        if use_library:
+            try:
+                library_artists = await self._yandex.fetch_library_artist_names(
+                    access_token,
+                    limit=settings.library_artist_limit,
+                )
+                if not library_artists:
+                    warnings.append(
+                        "Библиотека пуста или недоступна — генерируем без персонализации."
+                    )
+            except Exception as exc:
+                logger.warning("Library taste fetch failed: %s", exc)
+                warnings.append(
+                    "Не удалось загрузить лайки/недавнее — генерируем без персонализации."
+                )
+                library_artists = []
 
         retrieval_started = time.perf_counter()
         try:
             candidates = await self._retrieval.collect_candidates(profile, access_token)
+            if library_artists:
+                seed_artists = library_artists[: settings.library_seed_artists]
+                candidates = await self._retrieval.expand_from_artists(
+                    profile,
+                    access_token,
+                    candidates,
+                    seed_artists,
+                    similar_seeds=settings.library_similar_seeds,
+                )
         except YandexMusicError:
             raise
         except Exception as exc:
@@ -261,6 +373,7 @@ class PlaylistService:
                 access_token=access_token,
                 excludes=excludes,
                 diversity=diversity,
+                library_artists=library_artists,
             )
         except Exception as exc:
             raise ScoringError(f"Scoring failed: {exc}") from exc
@@ -291,7 +404,17 @@ class PlaylistService:
             instrumental_only=instrumental_only,
             exclude_artists=excludes,
             diversity=diversity,
+            use_library=use_library,
         )
+        total_ms = int((time.perf_counter() - pipeline_started) * 1000)
+        latency_breakdown = {
+            "llm": llm_ms,
+            "retrieval": retrieval_ms,
+            "scoring": scoring_ms,
+            "export": export_ms,
+        }
+        warnings_count = len(warnings)
+        full_n = pool_stats.selected == track_count
         row = await self._repo.create(
             user_id=user_id,
             prompt=prompt,
@@ -304,12 +427,17 @@ class PlaylistService:
             pool_stats=pool_stats.model_dump(),
             options=generation_options.model_dump(),
             source_id=source_id,
+            latency_ms=total_ms,
+            latency_breakdown=latency_breakdown,
+            warnings=warnings or None,
+            warnings_count=warnings_count,
         )
 
-        total_ms = int((time.perf_counter() - pipeline_started) * 1000)
         logger.info(
             "Playlist pipeline: llm=%dms retrieval=%dms scoring=%dms export=%dms "
-            "total=%dms tracks=%d method=%s raw=%d clean=%d id=%s",
+            "total=%dms tracks=%d method=%s raw=%d clean=%d selected=%d track_count=%d "
+            "full_n=%s warnings_count=%d diversity=%s use_library=%s "
+            "library_artists=%d source_id=%s id=%s",
             llm_ms,
             retrieval_ms,
             scoring_ms,
@@ -319,21 +447,18 @@ class PlaylistService:
             method,
             pool_stats.raw,
             pool_stats.clean,
+            pool_stats.selected,
+            track_count,
+            full_n,
+            warnings_count,
+            diversity,
+            use_library,
+            len(library_artists),
+            source_id,
             row.id,
         )
 
-        return PlaylistGenerateResponse(
-            id=row.id,
-            prompt=prompt,
-            title=profile.playlist_title,
-            description=description,
-            playlist_url=playlist_url,
-            tracks=tracks,
-            pool_stats=pool_stats,
-            profile=profile,
-            options=generation_options,
-            warnings=exclude_warnings,
-        )
+        return generation_to_response(row)
 
     async def list_history(
         self,
@@ -357,6 +482,9 @@ class PlaylistService:
                     pool_stats=pool_stats,
                     options=_options_from_row(row.options),
                     created_at=row.created_at,
+                    source_id=row.source_id,
+                    latency_ms=row.latency_ms,
+                    feedback=_feedback_from_row(row.feedback),
                 )
             )
         return PlaylistHistoryResponse(items=items, limit=limit, offset=offset)
@@ -371,6 +499,26 @@ class PlaylistService:
             raise NotFoundError("Playlist generation not found")
         return generation_to_response(row)
 
+    async def set_feedback(
+        self,
+        generation_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        value: FeedbackValue | None,
+    ) -> PlaylistFeedbackResponse:
+        row = await self._repo.update_feedback(
+            generation_id,
+            user_id,
+            feedback=_feedback_to_int(value),
+        )
+        if row is None:
+            raise NotFoundError("Playlist generation not found")
+        return PlaylistFeedbackResponse(
+            id=row.id,
+            feedback=_feedback_from_row(row.feedback),
+            feedback_at=row.feedback_at,
+        )
+
     async def _score_with_feedback(
         self,
         profile: MusicProfile,
@@ -380,12 +528,20 @@ class PlaylistService:
         access_token: str,
         excludes: list[str],
         diversity: DiversityMode,
+        library_artists: list[str] | None = None,
     ) -> tuple[list[ScoredTrack], list[TrackCandidate], str]:
+        library = library_artists or []
         ranked_pool, method = await self._scoring.rank_pool(
             profile,
             candidates,
             user_prompt=prompt,
         )
+        if library:
+            ranked_pool = apply_library_artist_boost(
+                ranked_pool,
+                library,
+                boost=settings.library_artist_boost,
+            )
         selected = self._scoring.select(ranked_pool, profile, diversity=diversity)
         selected = filter_excluded_scored(selected, excludes)
 
@@ -424,6 +580,12 @@ class PlaylistService:
             new_candidates,
             user_prompt=prompt,
         )
+        if library:
+            ranked_pool = apply_library_artist_boost(
+                ranked_pool,
+                library,
+                boost=settings.library_artist_boost,
+            )
         selected = self._scoring.select(ranked_pool, profile, diversity=diversity)
         selected = filter_excluded_scored(selected, excludes)
         return selected, candidates, method

@@ -1,14 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
 import { PlaylistForm } from "@/features/playlist/playlist-form";
-import { SAMPLE_PROMPTS } from "@/features/playlist/playlist-form-utils";
+import { ONBOARDING_SITUATIONS, SAMPLE_PROMPTS } from "@/features/playlist/playlist-form-utils";
 import { usePlaylistStore } from "@/features/playlist/stores/playlist-store";
 
 const replace = vi.fn();
 const generatePlaylist = vi.fn();
+const fetchPlaylistQuota = vi.fn();
 let searchParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
@@ -21,6 +22,7 @@ vi.mock("@/lib/api", async () => {
   return {
     ...actual,
     generatePlaylist: (...args: unknown[]) => generatePlaylist(...args),
+    fetchPlaylistQuota: (...args: unknown[]) => fetchPlaylistQuota(...args),
   };
 });
 
@@ -35,20 +37,40 @@ afterEach(() => {
   cleanup();
   replace.mockClear();
   generatePlaylist.mockReset();
+  fetchPlaylistQuota.mockReset();
   searchParams = new URLSearchParams();
   usePlaylistStore.getState().reset();
 });
 
 describe("PlaylistForm", () => {
+  beforeEach(() => {
+    fetchPlaylistQuota.mockResolvedValue({
+      limit: 10,
+      used: 2,
+      remaining: 8,
+      unlimited: false,
+      resets_at: "2099-01-02T00:00:00+00:00",
+    });
+  });
+
   it("shows validation when submitting an empty prompt", async () => {
     wrap(<PlaylistForm />);
-    fireEvent.click(screen.getByRole("button", { name: "Сгенерировать плейлист" }));
+    fireEvent.click(screen.getByRole("button", { name: "Собрать плейлист" }));
     expect(await screen.findByText("Введите описание плейлиста")).toBeTruthy();
     expect(generatePlaylist).not.toHaveBeenCalled();
   });
 
-  it("fills the prompt from a golden sample button", () => {
-    wrap(<PlaylistForm />);
+  it("fills the prompt from a situation chip (simple)", () => {
+    wrap(<PlaylistForm variant="simple" />);
+    fireEvent.click(screen.getByRole("button", { name: ONBOARDING_SITUATIONS[0].title }));
+    expect(screen.getByLabelText("Опишите плейлист")).toHaveProperty(
+      "value",
+      ONBOARDING_SITUATIONS[0].prompt,
+    );
+  });
+
+  it("fills the prompt from a golden sample button (full)", () => {
+    wrap(<PlaylistForm variant="full" />);
     fireEvent.click(screen.getByRole("button", { name: SAMPLE_PROMPTS[0] }));
     expect(screen.getByLabelText("Опишите плейлист")).toHaveProperty(
       "value",
@@ -78,7 +100,7 @@ describe("PlaylistForm", () => {
     fireEvent.change(screen.getByLabelText("Опишите плейлист"), {
       target: { value: "dark synthwave" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Сгенерировать плейлист" }));
+    fireEvent.click(screen.getByRole("button", { name: "Собрать плейлист" }));
 
     await waitFor(() => {
       expect(generatePlaylist).toHaveBeenCalledWith(
@@ -87,6 +109,7 @@ describe("PlaylistForm", () => {
           track_count: 25,
           instrumental_only: false,
           diversity: "normal",
+          use_library: false,
           source_id: null,
         }),
         expect.objectContaining({ signal: expect.any(AbortSignal) }),

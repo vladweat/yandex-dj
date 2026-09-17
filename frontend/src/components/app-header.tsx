@@ -8,47 +8,68 @@ import { useAuth } from "@/features/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+const PUBLIC_NAV = [
+  {
+    href: "/gallery",
+    label: "Галерея",
+    match: (path: string) => path.startsWith("/gallery"),
+  },
+];
+
+const AUTH_NAV = [
   { href: "/", label: "Генерация", match: (path: string) => path === "/" },
-  { href: "/debug", label: "Отладка", match: (path: string) => path.startsWith("/debug") },
+  {
+    href: "/lab",
+    label: "Lab",
+    match: (path: string) => path.startsWith("/lab") || path.startsWith("/debug"),
+  },
 ];
 
 export function AppHeader() {
   const { isAuthenticated, user, logout } = useAuth();
   const pathname = usePathname();
+  const nav = isAuthenticated ? [...AUTH_NAV, ...PUBLIC_NAV] : PUBLIC_NAV;
+  const isHome = pathname === "/";
 
   return (
-    <header className="shrink-0 border-b border-slate-800 bg-slate-950/80 pt-[env(safe-area-inset-top)] backdrop-blur">
-      <div className="flex min-h-12 items-center justify-between gap-2 px-3 py-2 sm:h-14 sm:gap-4 sm:px-4 sm:py-0">
-        <div className="flex min-w-0 items-center gap-3 sm:gap-6">
-          <Link href="/" className="block shrink-0">
-            <h1 className="text-base font-bold tracking-tight text-[#ffcc00] sm:text-lg">Prompt DJ</h1>
+    <header className="shrink-0 border-b border-white/[0.06] bg-black/20 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
+      <div className="mx-auto flex min-h-12 max-w-6xl items-center justify-between gap-2 px-4 py-2 sm:h-14 sm:px-6 sm:py-0">
+        <div className="flex min-w-0 items-center gap-4 sm:gap-8">
+          <Link href="/" className="group block shrink-0">
+            <h1
+              className={cn(
+                "font-display text-[15px] font-semibold tracking-tight transition-colors sm:text-base",
+                isHome ? "text-foreground" : "text-accent",
+              )}
+            >
+              Prompt <span className="text-accent">DJ</span>
+            </h1>
           </Link>
-          {isAuthenticated ? (
-            <nav className="flex items-center gap-1">
-              {NAV.map((item) => {
-                const active = item.match(pathname);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "rounded-md px-2 py-1 text-sm",
-                      active ? "text-slate-100" : "text-slate-400 hover:text-slate-200",
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          ) : null}
+          <nav className="flex items-center gap-0.5">
+            {nav.map((item) => {
+              const active = item.match(pathname);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "rounded-lg px-2.5 py-1.5 text-[13px] font-medium tracking-wide transition-colors",
+                    active
+                      ? "bg-white/[0.06] text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
 
         <div className="flex min-w-0 shrink-0 items-center gap-2 text-sm">
           {isAuthenticated && user ? (
             <>
-              <span className="hidden max-w-[180px] truncate text-slate-400 lg:inline">
+              <span className="hidden max-w-[160px] truncate text-[13px] text-muted-foreground lg:inline">
                 {user.login}
               </span>
               <Button type="button" variant="ghost" size="sm" onClick={logout} aria-label="Выйти">

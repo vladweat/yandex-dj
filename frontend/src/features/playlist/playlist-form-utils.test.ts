@@ -11,11 +11,31 @@ import {
 } from "@/features/playlist/playlist-form-utils";
 
 describe("SAMPLE_PROMPTS", () => {
-  it("covers kitchen / coding / synthwave golden prompts", () => {
-    expect(SAMPLE_PROMPTS).toHaveLength(3);
+  it("covers seven golden situational prompts", () => {
+    expect(SAMPLE_PROMPTS).toHaveLength(7);
     expect(SAMPLE_PROMPTS[0]).toContain("макароны");
     expect(SAMPLE_PROMPTS[1]).toContain("кодинг");
     expect(SAMPLE_PROMPTS[2]).toContain("синтвейв");
+    expect(SAMPLE_PROMPTS[3]).toContain("пробежки");
+    expect(SAMPLE_PROMPTS[4]).toContain("уснуть");
+    expect(SAMPLE_PROMPTS[5]).toContain("вечеринки");
+    expect(SAMPLE_PROMPTS[6]).toContain("дождь");
+  });
+});
+
+describe("GALLERY_PROMPTS", () => {
+  it("includes golden samples plus extra situations", async () => {
+    const { GALLERY_PROMPTS, promptDeepLink } = await import(
+      "@/features/playlist/playlist-form-utils"
+    );
+    expect(GALLERY_PROMPTS.length).toBeGreaterThanOrEqual(10);
+    expect(GALLERY_PROMPTS.slice(0, 7).map((item) => item.prompt)).toEqual([
+      ...SAMPLE_PROMPTS,
+    ]);
+    expect(promptDeepLink("kitchen")).toBe("/?prompt=kitchen");
+    expect(promptDeepLink("a b", "https://example.com")).toBe(
+      "https://example.com/?prompt=a%20b",
+    );
   });
 });
 
@@ -67,6 +87,7 @@ describe("generationOptionsFromResult", () => {
         instrumental_only: true,
         exclude_artists: ["Kavinsky"],
         diversity: "high",
+        use_library: true,
       },
       profile: { target_track_count: 25, vocal_type: "any" },
     });
@@ -75,6 +96,7 @@ describe("generationOptionsFromResult", () => {
       instrumental_only: true,
       exclude_artists: ["Kavinsky"],
       diversity: "high",
+      use_library: true,
     });
   });
 
@@ -86,6 +108,7 @@ describe("generationOptionsFromResult", () => {
     expect(opts.track_count).toBe(20);
     expect(opts.instrumental_only).toBe(true);
     expect(opts.diversity).toBe("normal");
+    expect(opts.use_library).toBe(false);
   });
 });
 
@@ -101,6 +124,7 @@ describe("draftFromHistoryItem", () => {
         instrumental_only: false,
         exclude_artists: ["A", "B"],
         diversity: "high",
+        use_library: true,
       },
       created_at: "2026-09-15T00:00:00Z",
     });
@@ -110,6 +134,7 @@ describe("draftFromHistoryItem", () => {
       instrumentalOnly: false,
       excludeArtists: "A, B",
       diversity: "high",
+      useLibrary: true,
       sourceId: null,
     });
   });
@@ -130,6 +155,10 @@ describe("classifyGenerateApiError", () => {
     expect(classifyGenerateApiError(new ApiRequestError("slow", 504))).toEqual({
       kind: "timeout",
       message: "slow",
+    });
+    expect(classifyGenerateApiError(new ApiRequestError("limit", 429))).toEqual({
+      kind: "quota",
+      message: "limit",
     });
     expect(classifyGenerateApiError(new ApiRequestError("down", 0))).toEqual({
       kind: "unavailable",
