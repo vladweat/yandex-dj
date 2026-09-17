@@ -22,7 +22,7 @@ from app.utils.scoring import (
     cosine_scores,
     fallback_scores,
     merge_embedding_rank,
-    select_playlist_tracks,
+    select_playlist_with_meta,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,8 @@ class ScoringService:
             candidates,
             user_prompt=user_prompt,
         )
-        return self.select(ranked, profile), method
+        tracks, _shortfall = self.select(ranked, profile)
+        return tracks, method
 
     async def rank_pool(
         self,
@@ -87,8 +88,8 @@ class ScoringService:
         profile: MusicProfile,
         *,
         diversity: str = "normal",
-    ) -> list[ScoredTrack]:
-        selected = select_playlist_tracks(
+    ) -> tuple[list[ScoredTrack], bool]:
+        selection = select_playlist_with_meta(
             ranked,
             profile,
             diversity=diversity,
@@ -96,7 +97,10 @@ class ScoringService:
                 None if diversity == "high" else settings.max_tracks_per_artist
             ),
         )
-        return [ScoredTrack.from_candidate(track, score) for track, score in selected]
+        tracks = [
+            ScoredTrack.from_candidate(track, score) for track, score in selection.tracks
+        ]
+        return tracks, selection.shortfall
 
     def _rank_pool_sync(
         self,
@@ -168,7 +172,8 @@ class ScoringService:
         user_prompt: str | None,
     ) -> tuple[list[ScoredTrack], ScoringMethod]:
         ranked, method = self._rank_pool_sync(profile, candidates, user_prompt)
-        return self.select(ranked, profile), method
+        tracks, _shortfall = self.select(ranked, profile)
+        return tracks, method
 
     def _embedding_rank(
         self,

@@ -9,7 +9,12 @@ from yandex_music import ClientAsync, Track
 
 from app.core.config import settings
 from app.schemas.llm import MusicProfile
-from app.schemas.track import TrackCandidate
+from app.schemas.track import (
+    RETRIEVAL_TIER_ANCHOR,
+    RETRIEVAL_TIER_SEARCH,
+    RETRIEVAL_TIER_SIMILAR,
+    TrackCandidate,
+)
 from app.services.track_cache import TrackCacheService
 from app.services.yandex_music_service import YandexMusicService
 from app.utils.quality import (
@@ -21,7 +26,7 @@ from app.utils.quality import (
     references_in_artists,
 )
 from app.utils.search_queries import expand_search_queries
-from app.utils.tracks import normalize_pool, tracks_to_candidates
+from app.utils.tracks import normalize_pool, tracks_to_candidates, with_retrieval_tier
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +243,10 @@ class RetrievalService:
             for track_id in seed_ids[:request_limit]
         ]
         raw_tracks = await _gather_tracks(tasks)
-        similar = normalize_pool(tracks_to_candidates(raw_tracks))
+        similar = with_retrieval_tier(
+            tracks_to_candidates(raw_tracks),
+            RETRIEVAL_TIER_SIMILAR,
+        )
         merged = normalize_pool(candidates + similar)
         added = len(merged) - len(candidates)
         if added:
@@ -298,7 +306,10 @@ class RetrievalService:
 
         tasks = [self._fetch_artist_tracks(client, name) for name in names]
         raw_tracks = await _gather_tracks(tasks)
-        tops = normalize_pool(tracks_to_candidates(raw_tracks))
+        tops = with_retrieval_tier(
+            tracks_to_candidates(raw_tracks),
+            RETRIEVAL_TIER_ANCHOR,
+        )
         merged = normalize_pool(candidates + tops)
         added_tops = len(merged) - len(candidates)
 
@@ -355,7 +366,10 @@ class RetrievalService:
         used_seed_ids.update(seed_ids)
         tasks = [self._yandex.tracks_similar_list(client, track_id) for track_id in seed_ids]
         raw_tracks = await _gather_tracks(tasks)
-        similar = normalize_pool(tracks_to_candidates(raw_tracks))
+        similar = with_retrieval_tier(
+            tracks_to_candidates(raw_tracks),
+            RETRIEVAL_TIER_SIMILAR,
+        )
         merged = normalize_pool(candidates + similar)
         added = len(merged) - len(candidates)
         if added:
@@ -372,19 +386,35 @@ class RetrievalService:
         profile: MusicProfile,
         reference_track_id: str | int | None,
     ) -> list[TrackCandidate]:
-        tasks: list[Awaitable[list[Track]]] = []
-
-        for query in profile.search_queries:
-            tasks.append(self._yandex.search_tracks(client, query))
-
-        for artist_name in self._artists_for_tops(profile):
-            tasks.append(self._fetch_artist_tracks(client, artist_name))
-
+        search_tasks: list[Awaitable[list[Track]]] = [
+            self._yandex.search_tracks(client, query) for query in profile.search_queries
+        ]
+        anchor_tasks: list[Awaitable[list[Track]]] = [
+            self._fetch_artist_tracks(client, artist_name)
+            for artist_name in self._artists_for_tops(profile)
+        ]
+        similar_tasks: list[Awaitable[list[Track]]] = []
         if reference_track_id is not None:
-            tasks.append(self._yandex.tracks_similar_list(client, reference_track_id))
+            similar_tasks.append(
+                self._yandex.tracks_similar_list(client, reference_track_id)
+            )
 
-        raw_tracks = await _gather_tracks(tasks)
-        return normalize_pool(tracks_to_candidates(raw_tracks))
+        search_raw = await _gather_tracks(search_tasks)
+        anchor_raw = await _gather_tracks(anchor_tasks)
+        similar_raw = await _gather_tracks(similar_tasks)
+        search_candidates = with_retrieval_tier(
+            tracks_to_candidates(search_raw),
+            RETRIEVAL_TIER_SEARCH,
+        )
+        anchor_candidates = with_retrieval_tier(
+            tracks_to_candidates(anchor_raw),
+            RETRIEVAL_TIER_ANCHOR,
+        )
+        similar_candidates = with_retrieval_tier(
+            tracks_to_candidates(similar_raw),
+            RETRIEVAL_TIER_SIMILAR,
+        )
+        return normalize_pool(search_candidates + anchor_candidates + similar_candidates)
 
     @staticmethod
     def _artists_for_tops(profile: MusicProfile) -> list[str]:
@@ -411,7 +441,12 @@ class RetrievalService:
     ) -> list[TrackCandidate]:
         tasks = [self._yandex.search_tracks(client, query) for query in queries]
         raw_tracks = await _gather_tracks(tasks)
-        return normalize_pool(tracks_to_candidates(raw_tracks))
+        return normalize_pool(
+            with_retrieval_tier(
+                tracks_to_candidates(raw_tracks),
+                RETRIEVAL_TIER_SEARCH,
+            )
+        )
 
     async def _fetch_artist_tracks(self, client: ClientAsync, artist_name: str) -> list[Track]:
         artist_id = await self._yandex.search_artist_id(client, artist_name)

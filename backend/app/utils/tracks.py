@@ -41,16 +41,36 @@ def normalize_pool(tracks: list[TrackCandidate]) -> list[TrackCandidate]:
     """Дедупликация и фильтр unavailable (ТЗ §4.3)."""
     seen_ids: set[str] = set()
     seen_titles: set[str] = set()
+    id_index: dict[str, int] = {}
     result: list[TrackCandidate] = []
 
     for track in tracks:
         if not track.available:
             continue
         key = track.artist_title_key
-        if track.id in seen_ids or key in seen_titles:
+        if track.id in seen_ids:
+            index = id_index[track.id]
+            if track.retrieval_tier > result[index].retrieval_tier:
+                result[index] = track
+            continue
+        if key in seen_titles:
             continue
         seen_ids.add(track.id)
         seen_titles.add(key)
+        id_index[track.id] = len(result)
         result.append(track)
 
     return result
+
+
+def with_retrieval_tier(
+    tracks: list[TrackCandidate],
+    tier: int,
+) -> list[TrackCandidate]:
+    """Пометить треки источником; при merge в normalize_pool сохранится max tier."""
+    return [
+        track
+        if track.retrieval_tier >= tier
+        else track.model_copy(update={"retrieval_tier": tier})
+        for track in tracks
+    ]

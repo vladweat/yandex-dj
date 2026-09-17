@@ -4,6 +4,7 @@ import re
 
 from app.core.config import settings
 from app.schemas.llm import MusicProfile
+from app.utils.mood_tokens import MOOD_SEARCH_BAIT_TOKENS
 
 # Структурные SEO-фразы (не список контекстов вроде cooking/sleep).
 _GENERIC_PATTERNS = re.compile(
@@ -23,37 +24,8 @@ _GENERIC_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
-# Mood в search тянет SEO-title («Sad Rap», «Bones sad»). Не трогаем scene-adj
-# вроде dark/atmospheric/energetic — они нужны situational golden.
-_MOOD_BAIT_TOKENS = frozenset(
-    {
-        "sad",
-        "emotional",
-        "melancholic",
-        "melancholy",
-        "introspective",
-        "depressing",
-        "depressed",
-        "lonely",
-        "heartbreak",
-        "heartbreaking",
-        "cozy",
-        "chill",
-        "relaxing",
-        "calm",
-        "peaceful",
-        "romantic",
-        "moody",
-        "nostalgic",
-        "warm",
-        "dreamy",
-        "gentle",
-        "soft",
-        "sleepy",
-        "quiet",
-        "rainy",
-    }
-)
+# Mood в search тянет SEO-title («Sad Rap», «Bones sad»). Scene-adj (dark/atmospheric/…)
+# не режем — lexicon: app.utils.mood_tokens.MOOD_SEARCH_BAIT_TOKENS.
 
 _GENRE_BAIT_TOKENS = frozenset(
     {
@@ -125,12 +97,12 @@ def is_mood_bait_search_query(query: str) -> bool:
     if len(tokens) < 2:
         return False
 
-    mood_hits = [token for token in tokens if token in _MOOD_BAIT_TOKENS]
+    mood_hits = [token for token in tokens if token in MOOD_SEARCH_BAIT_TOKENS]
     genre_hits = [token for token in tokens if token in _GENRE_BAIT_TOKENS]
     if mood_hits and genre_hits:
         return True
     # «Bones sad», «$uicideboy$ emotional», «Men I Trust cozy»
-    if tokens[-1] in _MOOD_BAIT_TOKENS:
+    if tokens[-1] in MOOD_SEARCH_BAIT_TOKENS:
         return True
     return False
 
