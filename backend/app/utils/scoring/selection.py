@@ -12,7 +12,11 @@ from app.schemas.track import (
     RETRIEVAL_TIER_SIMILAR,
     TrackCandidate,
 )
-from app.utils.quality import diversity_artist_keys, hard_references_in_artists, normalize_song_title
+from app.utils.quality import (
+    diversity_artist_keys,
+    hard_references_in_artists,
+    normalize_song_title,
+)
 from app.utils.scoring.adjustments import (
     apply_mood_title_demote,
     is_score_plateau,
@@ -41,7 +45,12 @@ from app.utils.scoring.diversity import (
     max_anchor_tracks,
     max_tracks_per_artist,
 )
-from app.utils.scoring.floors import filter_by_top_median_gap, playlist_score_floor, score_window, largest_score_gap_cut
+from app.utils.scoring.floors import (
+    filter_by_top_median_gap,
+    largest_score_gap_cut,
+    playlist_score_floor,
+    score_window,
+)
 
 
 class PlaylistSelection(NamedTuple):

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -7,8 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.proxy import apply_internal_no_proxy
 
 apply_internal_no_proxy()
-
-import asyncio
 
 from app import __version__
 from app.api.v1.router import api_router
