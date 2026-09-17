@@ -205,7 +205,7 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 - [x] **P1:** хвост без embedding-мусора (Hauvy и т.п.); cap якорей ~60%
 - [x] **P2:** latency budget 7–12 сек (`SCORING_EMBED_LIMIT` / меньше double-embed)
 
-**Handoff для агента:** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — не добавлять regex под промпт; named-artist кейс + бэклог Q1–Q5 и выводы по preprocess — там же (2026-09-17).  
+**Handoff для агента:** [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — не добавлять regex под промпт; Q1–Q5 ✅; план хвоста **Q6–Q8** (shortfall → two-phase → source prior) — там же (2026-09-17).  
 **UI-тест:** [FRONTEND.md](FRONTEND.md) § «Ручной тест UI».
 
 **Дальше:** продуктовый бэклог — [PRODUCT.md](PRODUCT.md) (P0 metrics → P1 канал / listening graph).

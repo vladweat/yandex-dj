@@ -1,7 +1,7 @@
 # Качество плейлистов — статус и handoff
 
 > **Для следующего агента.** Читать перед любыми правками retrieval/scoring/quality.  
-> Обновлено: 2026-09-17 — Q1–Q5 ✅ (search hygiene, SEO, hard/soft anchors, plateau, language/diversity constraints).
+> Обновлено: 2026-09-17 — Q1–Q5 ✅; следующий план качества — **хвост без порчи топа** (Q6–Q8 ниже).
 
 ## TL;DR
 
@@ -10,19 +10,19 @@
 | End-to-end пайплайн | ✅ `POST /playlists/generate` → 200, ссылка, треки |
 | Frontend для теста | ✅ `/lab` — full форма + таблица + `pool_stats`; `/` — пользовательский UI |
 | Промпт без артистов | ✅ LLM подбирает якоря, embedding по user prompt |
-| SEO pre-filter | ✅ Универсальный (не список cooking/sleep) + Sad Rap / Melancholy |
+| SEO pre-filter | ✅ Универсальный (не список cooking/sleep) + Sad Rap / Melancholy / type beat |
 | Топ релевантности | ✅ kitchen: Parcels / Khruangbin / Men I Trust / Camyo |
 | **Полнота N треков** | ✅ discovered similar + frequency-rank; tail fill без `score[N-1]` |
 | `pool_stats` в ответе | ✅ `{raw, clean, selected}` |
-| Хвост / якоря / latency | ✅ gap, cap 60% hard-якорей, `rank_pool_merge`, `SCORING_EMBED_LIMIT=0` |
+| Хвост / якоря / latency | ✅ gap, cap 60% hard-якорей, `rank_pool_merge`; export batch change |
 | Situational golden | ✅ сильный cold-start (кухня/код/сон…) |
-| Named-artist + constraints | ✅ Q1–Q5 + structural: genre-only search ban, type beat, ref near-dup |
-| Следующий фокус | Продукт — [PRODUCT.md](PRODUCT.md); пайплайн только с регрессом golden |
+| Named-artist + constraints | ✅ Q1–Q5 + structural; **хвост** — серый filler при `full_n` (см. Q6+) |
+| Следующий фокус качества | **[Q6–Q8: хвост без порчи топа](#план-q6q8--хвост-без-порчи-топа)**; продукт — [PRODUCT.md](PRODUCT.md) |
 
 **Не ходить по кругу:** не добавлять regex под конкретный промпт/жанр.  
 **Граница качества (продукт):** «достаточно хорошо, чтобы слушать целиком», не редакционка.
 
-**Краткий диагноз (2026-09-17):** система сильна на situational cold-start; слабее на **named-artist + constraints + diversity**, потому что LLM раздувает якоря/`search_queries`, а при плоских scores ranking не отделяет сцену от lexical SEO. Максимальный ROI — **входы в пул** (queries + SEO filter + budget якорей), не ещё один проход retrieval и не rewrite user prompt.
+**Краткий диагноз (2026-09-17):** входы в пул (queries / SEO / hard-soft / язык) улучшены. Live named-artist: **топ узкий и чище**, хвост чаще нейтральный filler — из‑за `selected == N` + плоский cosine + soft tail floor. Следующий ROI — **двухфазный select / shortfall**, не ещё фильтры под жанр.
 
 ---
 
@@ -224,9 +224,56 @@ Situational golden (без имён) этим почти не бьётся — �
 | **Q4** | Score plateau: при малом размахе топ-N предпочитать discovered/similar не-якорных; опц. demote lexical overlap title↔mood | Ghostemane остаётся, Token/SEO — нет | ✅ plateau reorder + mood demote |
 | **Q5** | Constraints → опции: `exclude_languages` / map «разнообразн*» → `diversity=high` | Частый RU-каталожный pain | ✅ `prompt_constraints.py` + API field |
 
-**Порядок внедрения:** ~~Q1 → Q2 → Q3 → Q4 → Q5~~ ✅.
+**Порядок внедрения:** ~~Q1 → Q2 → Q3 → Q4 → Q5~~ ✅. Дальше — [Q6–Q8](#план-q6q8--хвост-без-порчи-топа).
 
-**Не в приоритете качества:** ещё больший raw-пул; C4 ради рефакторинга; BPM/lyrics (PRODUCT P2); rewrite user prompt как основной рычаг.
+**Не в приоритете качества:** ещё больший raw-пул; C4 ради рефакторинга; BPM/lyrics (PRODUCT P2); rewrite user prompt как основной рычаг; global жёсткий `min_score` (режет situational golden).
+
+---
+
+## План Q6–Q8 — хвост без порчи топа
+
+> Live (Bones-класс, 2026-09-17): после Q1–Q5 топ ~1–7(+сцена) хороший; хвост — серый filler / popularity FP при обязательстве `full_n`.  
+> **Принцип:** зафиксировать голову, ужесточить только добор. Не regex под жанр.
+
+### Почему хвост слабый
+
+`selected == N` + плоский embedding + tail floor `last−0.04` → fill берёт «что угодно выше порога». Голова при этом почти не виновата.
+
+### Принцип отбора
+
+| Фаза | Слоты | Правила |
+|------|-------|---------|
+| **A — head (lock)** | `1…K` (K ≈ 10–12 или elbow) | Как сейчас: score + hard boost + diversity. **Не** пересчитывать после fill |
+| **B — expansion** | `K+1…N` (или shortfall) | Другой пол и другой пул-приоритет; голова не трогается |
+
+### Бэклог
+
+| # | Доработка | Зачем | Как не убить топ | Риск |
+|---|-----------|-------|------------------|------|
+| **Q6** | **Shortfall вместо dirty fill** | Не добирать 50 Cent / random filler до 25 | Резать только когда gap до N большой; kitchen golden — по-прежнему стремиться к `full_n` при `clean≫N` | Средний — ослабить CI/`full_n` alert для named-artist; warning `shortfall` |
+| **Q7** | **Two-phase select** | Хвост = расширение сцены от ядра | Phase A lock; Phase B: similar-to-selected / discovered non-hard; пол `median(top-K) − δ` жёстче tail `−0.04` | Средний — регресс golden; тесты на head invariance |
+| **Q8** | **Source prior + isolate demote (только fill)** | Similar-от-якоря > «только search»; артист без соседей в пуле — штраф в Phase B | Не применять demote к Phase A | Ниже, если только expansion |
+
+**Дополнительно (в рамках Q7):**  
+- Plateau / prefer-non-anchor — **только Phase B** (сейчас может слегка двигать середину).  
+- Финальный order: locked head по score, затем expansion — не один глобальный sort, который всплывает слабый cosine в «начало».
+
+### Порядок внедрения
+
+```
+Q6 shortfall (быстрый рычаг, продукт/метрики)
+  → Q7 two-phase select + head lock
+    → Q8 source prior / isolate demote на expansion
+```
+
+Регресс: `make test` + live Bones-промпт + 2–3 golden UI (kitchen, coding, rain). Head топ-5 не должен меняться от Q8.
+
+### Не делать в этом плане
+
+- Global `min_score` / ещё regex SEO под жанр  
+- Denylist артистов  
+- Ещё один expand retrieval «на всякий случай»  
+- Rewrite user prompt  
 
 ---
 
