@@ -11,7 +11,43 @@ export const SAMPLE_PROMPTS = [
   "под настроение пока варю макароны",
   "спокойная музыка для кодинга поздней ночью",
   "саундтрек для ночной поездки в стиле синтвейв",
+  "энергичная музыка для пробежки",
+  "тихая музыка чтобы уснуть",
+  "танцевальный плейлист для вечеринки дома",
+  "грустная музыка под дождь у окна",
 ] as const;
+
+/** Три ситуации для онбординга (P1.4). */
+export const ONBOARDING_SITUATIONS = [
+  { title: "Кухня", prompt: SAMPLE_PROMPTS[0] },
+  { title: "Работа", prompt: SAMPLE_PROMPTS[1] },
+  { title: "Дорога", prompt: SAMPLE_PROMPTS[2] },
+] as const;
+
+export type GalleryPrompt = {
+  title: string;
+  prompt: string;
+};
+
+/** Публичная галерея: 7 golden + доп. ситуации → /?prompt=… */
+export const GALLERY_PROMPTS: GalleryPrompt[] = [
+  { title: "Кухня", prompt: SAMPLE_PROMPTS[0] },
+  { title: "Кодинг", prompt: SAMPLE_PROMPTS[1] },
+  { title: "Синтвейв", prompt: SAMPLE_PROMPTS[2] },
+  { title: "Пробежка", prompt: SAMPLE_PROMPTS[3] },
+  { title: "Сон", prompt: SAMPLE_PROMPTS[4] },
+  { title: "Вечеринка", prompt: SAMPLE_PROMPTS[5] },
+  { title: "Дождь", prompt: SAMPLE_PROMPTS[6] },
+  { title: "Утро", prompt: "лёгкая музыка на утро с кофе у окна" },
+  { title: "Поезд", prompt: "меланхоличный плейлист для долгой поездки в поезде" },
+  { title: "Фокус", prompt: "глубокий фокус без слов для работы за ноутбуком" },
+  { title: "Вечер", prompt: "мягкий вечерний джаз для ужина вдвоём" },
+];
+
+export function promptDeepLink(prompt: string, origin = ""): string {
+  const path = `/?prompt=${encodeURIComponent(prompt)}`;
+  return origin ? `${origin}${path}` : path;
+}
 
 export function parseExcludeArtists(raw: string): string[] {
   return raw
@@ -49,6 +85,7 @@ export function generationOptionsFromResult(current: {
       opts?.instrumental_only ?? current.profile.vocal_type === "instrumental_only",
     exclude_artists: opts?.exclude_artists ?? [],
     diversity: (opts?.diversity ?? "normal") as DiversityMode,
+    use_library: opts?.use_library ?? false,
   };
 }
 
@@ -60,6 +97,7 @@ export function draftFromHistoryItem(item: PlaylistHistoryItem): PlaylistFormDra
     instrumentalOnly: opts?.instrumental_only ?? false,
     excludeArtists: (opts?.exclude_artists ?? []).join(", "),
     diversity: opts?.diversity ?? "normal",
+    useLibrary: opts?.use_library ?? false,
     sourceId: null,
   };
 }
@@ -70,6 +108,7 @@ export type GenerateApiErrorAction =
   | { kind: "validation"; message: string }
   | { kind: "unavailable" }
   | { kind: "timeout"; message: string }
+  | { kind: "quota"; message: string }
   | { kind: "message"; message: string };
 
 export function classifyGenerateApiError(err: unknown): GenerateApiErrorAction {
@@ -79,6 +118,7 @@ export function classifyGenerateApiError(err: unknown): GenerateApiErrorAction {
   if (err.status === 499) return { kind: "cancelled" };
   if (err.status === 401) return { kind: "unauthorized" };
   if (err.status === 422) return { kind: "validation", message: err.message };
+  if (err.status === 429) return { kind: "quota", message: err.message };
   if (err.status === 504) return { kind: "timeout", message: err.message };
   if (err.status === 0 || err.status === 502 || err.status === 503) {
     return { kind: "unavailable" };

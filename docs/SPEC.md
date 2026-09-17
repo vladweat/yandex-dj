@@ -195,32 +195,30 @@
 | 1.5 | Next.js UI (Device Flow + генерация) | ✅ |
 | 2–4 | LLM → retrieval → scoring | ✅ |
 | 5 | Export + FastAPI end-to-end | ✅ |
-| 5.5 | Качество: P0/P1/P2 ✅ | ✅ |
+| 5.5 | Качество: P0/P1/P2 (хвост, якоря, latency) | ✅ |
 | 6 | История, реген, опции, UX, CI | ✅ |
-| 7 | Telegram, BPM, lyrics, AI-обложка, Celery | backlog |
+| **7+** | Product: metrics → бот → listening graph → lyrics/обложка | backlog — [PRODUCT.md](PRODUCT.md) |
 
-Детальный чеклист: [DEVELOPMENT.md](DEVELOPMENT.md). Качество: [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md).
+Детальный чеклист: [DEVELOPMENT.md](DEVELOPMENT.md). Качество: [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md). Продукт: [PRODUCT.md](PRODUCT.md).
 
 ---
 
 ## 8. Ближайшие доработки и backlog
 
-**Сейчас (этап 5.5):**
-- **P1 хвост ✅:** `filter_by_top_median_gap` + cap якорей ~60% — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md)
-- **P2 latency ✅:** `rank_pool_merge` на feedback; `SCORING_EMBED_LIMIT=0`
+**Закрыто (ядро):**
+- ✅ Этап 5.5: хвост (top-median gap, cap якорей 60%), latency (`rank_pool_merge`, `SCORING_EMBED_LIMIT=0`)
+- ✅ Этап 6: история, «ещё вариант», options, warnings, timeout/abort, CI, golden
+- ✅ Eng debt A/B/C1–C3 (C4 `quality.py` — при SEO-правке)
 
-**Техдолг (после/параллельно с 5.5):** полный список — [DEVELOPMENT.md](DEVELOPMENT.md) § «Техдолг».
-- ✅ Regen/history восстанавливают `options`; `PIPELINE_TIMEOUT_SEC` enforced (504)
-- ✅ `exclude_artists` silent no-op → `warnings[]`
-- Осталось: дубль expand в retrieval; размер `quality.py` (приоритет C)
+**Сейчас (продукт) — [PRODUCT.md](PRODUCT.md):**
 
-**Этап 6 (продукт ✅):**
-- ✅ История, «ещё вариант» (`source_id`), `MusicProfile`, опции, UX
-- ✅ CI + golden-промпты + vitest
+| Приоритет | Фокус |
+|-----------|--------|
+| **P0** | Product metrics, like/dislike, regen-7d, расширенный golden |
+| **P1** | Telegram-бот; галерея промптов; персонализация likes/recent; квоты; онбординг |
+| **P2** | Lyrics «без слов»/NSFW; AI-обложка; replace track; шаринг |
+| **P3** | BPM, Celery, freemium — по триггеру |
 
-**Этап 7 (позже, после 5.5 + критичного техдолга):**
-- **Telegram-бот** (`aiogram`)
-- **BPM-анализ:** `librosa` на 30-сек превью, post-select reorder по флагу (не hot path)
-- **Анализ lyrics:** `tracks_lyrics` для фильтрации нежелательного контента
-- **AI-обложка:** Stable Diffusion / Flux → загрузка в плейлист
-- **Celery/Arq** — при latency ≫ бюджета или очереди
+**Не сейчас:** multi-catalog, org-mode, перепись UI, редакционный уровень, монетизация «Ещё вариант».
+
+**Инвариант качества:** релевантность — моделью, не regex под промпт/жанр ([PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md)).

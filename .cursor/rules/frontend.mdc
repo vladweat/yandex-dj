@@ -21,9 +21,10 @@ alwaysApply: false
 - Сохранить `session_id`; дальше `Authorization: Bearer <session_id>`.
 - Не хранить OAuth-токен Яндекса в браузере.
 
-## Main screen
+## Screens
 
-- `/`: форма промпта (+ примеры) → `POST /playlists/generate` → ссылка, `pool_stats`, таблица треков со `similarity_score`.
+- `/`: простой UI (textarea-hero, `use_library`) → результат: Яндекс + like/dislike; без MusicProfile/pool_stats/scores.
+- `/lab`: полный UI (все опции, MusicProfile, `pool_stats`, similarity) — отладка.
 - `401` → сброс сессии → `/login`. Ошибки — toast, не ломать layout.
 
 Prefer shadcn primitives over custom CSS. See [docs/FRONTEND.md](../../docs/FRONTEND.md).

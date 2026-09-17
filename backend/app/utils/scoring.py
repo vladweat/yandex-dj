@@ -13,6 +13,7 @@ from app.utils.quality import (
 )
 
 REFERENCE_ANCHOR_BOOST = 0.03
+LIBRARY_ARTIST_BOOST = 0.025
 ANCHOR_MAX_TRACKS_PER_ARTIST = 3
 ANCHOR_FILL_MAX_TRACKS_PER_ARTIST = 5
 HIGH_DIVERSITY_MAX_PER_ARTIST = 1
@@ -313,6 +314,35 @@ def apply_reference_anchor_boost(
     for track, score in ranked:
         if references_in_artists(track, profile):
             score = min(1.0, score + REFERENCE_ANCHOR_BOOST)
+        boosted.append((track, score))
+    boosted.sort(key=lambda item: item[1], reverse=True)
+    return boosted
+
+
+def apply_library_artist_boost(
+    ranked: list[tuple[TrackCandidate, float]],
+    library_artists: list[str],
+    *,
+    boost: float | None = None,
+) -> list[tuple[TrackCandidate, float]]:
+    """Soft bias: артисты из likes/recent получают небольшой плюс к score."""
+    if not library_artists or not ranked:
+        return ranked
+    delta = LIBRARY_ARTIST_BOOST if boost is None else boost
+    if delta <= 0:
+        return ranked
+    refs = [name.strip() for name in library_artists if name and name.strip()]
+    if not refs:
+        return ranked
+
+    boosted: list[tuple[TrackCandidate, float]] = []
+    for track, score in ranked:
+        if any(
+            artist_matches_reference(artist, ref)
+            for artist in track.artists
+            for ref in refs
+        ):
+            score = min(1.0, score + delta)
         boosted.append((track, score))
     boosted.sort(key=lambda item: item[1], reverse=True)
     return boosted

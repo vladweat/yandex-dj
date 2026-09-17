@@ -7,9 +7,11 @@ alwaysApply: true
 
 Сервис генерации плейлистов: промпт → MusicProfile → retrieval → scoring → export.
 
-Документы: `docs/SPEC.md`, `docs/STACK.md`, `docs/FRONTEND.md`. Latency: **7–12 сек**.
+Документы: `docs/SPEC.md`, `docs/PRODUCT.md` (бэклог после MVP), `docs/STACK.md`, `docs/FRONTEND.md`, `docs/PLAYLIST_QUALITY.md`. Latency: **7–12 сек**.
 
 Frontend: Next.js 15 (каркас из `../docwise`), Bearer `session_id`, см. `docs/REUSE_FROM_DOCWISE.md`.
+
+**После MVP:** не крутить пайплайн без регресса golden; фокус — metrics → Telegram → listening graph (`docs/PRODUCT.md`). Не добавлять regex под конкретный промпт/жанр.
 
 ## Слои FastAPI (`backend/app/`)
 

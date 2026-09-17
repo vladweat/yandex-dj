@@ -10,6 +10,7 @@ from app.core.exceptions import (
     LLMError,
     NotFoundError,
     PipelineTimeoutError,
+    QuotaExceededError,
     RetrievalError,
     ScoringError,
     YandexMusicError,
@@ -17,9 +18,12 @@ from app.core.exceptions import (
 from app.core.security import decrypt_token
 from app.db.models.session import Session
 from app.schemas.playlist import (
+    PlaylistFeedbackRequest,
+    PlaylistFeedbackResponse,
     PlaylistGenerateRequest,
     PlaylistGenerateResponse,
     PlaylistHistoryResponse,
+    PlaylistQuotaResponse,
 )
 from app.services.playlist_service import PlaylistService
 
@@ -36,6 +40,14 @@ async def list_playlists(
     return await service.list_history(session.user_id, limit=limit, offset=offset)
 
 
+@router.get("/quota", response_model=PlaylistQuotaResponse)
+async def get_playlist_quota(
+    session: Session = CurrentSession,
+    service: PlaylistService = Depends(get_playlist_service),
+) -> PlaylistQuotaResponse:
+    return await service.get_quota(session.user_id)
+
+
 @router.get("/{generation_id}", response_model=PlaylistGenerateResponse)
 async def get_playlist(
     generation_id: uuid.UUID,
@@ -44,6 +56,26 @@ async def get_playlist(
 ) -> PlaylistGenerateResponse:
     try:
         return await service.get_generation(generation_id, session.user_id)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+
+@router.patch("/{generation_id}/feedback", response_model=PlaylistFeedbackResponse)
+async def set_playlist_feedback(
+    generation_id: uuid.UUID,
+    body: PlaylistFeedbackRequest,
+    session: Session = CurrentSession,
+    service: PlaylistService = Depends(get_playlist_service),
+) -> PlaylistFeedbackResponse:
+    try:
+        return await service.set_feedback(
+            generation_id,
+            session.user_id,
+            value=body.value,
+        )
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -69,6 +101,7 @@ async def generate_playlist(
                 user_id=session.user_id,
                 exclude_artists=body.exclude_artists,
                 diversity=body.diversity,
+                use_library=body.use_library,
                 source_id=body.source_id,
             ),
             timeout=settings.pipeline_timeout_sec,
@@ -81,6 +114,17 @@ async def generate_playlist(
                 f"(PIPELINE_TIMEOUT_SEC)"
             ),
         ) from PipelineTimeoutError(str(exc))
+    except QuotaExceededError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "message": str(exc),
+                "limit": exc.limit,
+                "used": exc.used,
+                "remaining": exc.remaining,
+                "resets_at": exc.resets_at,
+            },
+        ) from exc
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

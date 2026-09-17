@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 from app.api.deps import get_current_session, get_playlist_service
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, QuotaExceededError
 from app.core.security import encrypt_token
 from app.db.models.session import Session
 from app.db.models.user import User
@@ -17,6 +17,7 @@ from app.schemas.playlist import (
     PlaylistHistoryItem,
     PlaylistHistoryResponse,
     PlaylistPoolStats,
+    PlaylistQuotaResponse,
     PlaylistTrackResponse,
 )
 from app.schemas.scoring import ScoredTrack
@@ -55,6 +56,44 @@ SAMPLE_RANKED = [
 
 USER_ID = uuid4()
 GENERATION_ID = uuid4()
+
+
+def _mock_saved_row(
+    *,
+    source_id=None,
+    latency_ms: int | None = 1200,
+    warnings: list[str] | None = None,
+    feedback: int | None = None,
+) -> MagicMock:
+    saved = MagicMock()
+    saved.id = GENERATION_ID
+    saved.prompt = "dark synthwave for night coding"
+    saved.title = SAMPLE_PROFILE.playlist_title
+    saved.description = SAMPLE_PROFILE.playlist_description
+    saved.playlist_url = "https://music.yandex.ru/users/testuser/playlists/1003"
+    saved.tracks = [
+        {
+            "id": "9442712",
+            "title": "Nightcall",
+            "artist": "Kavinsky",
+            "duration_ms": 259000,
+            "similarity_score": 0.924,
+        }
+    ]
+    saved.pool_stats = {"raw": 1, "clean": 1, "selected": 1}
+    saved.profile = SAMPLE_PROFILE.model_dump()
+    saved.options = {
+        "track_count": 25,
+        "instrumental_only": False,
+        "exclude_artists": [],
+        "diversity": "high",
+    }
+    saved.warnings = warnings or []
+    saved.source_id = source_id
+    saved.latency_ms = latency_ms
+    saved.feedback = feedback
+    saved.feedback_at = None
+    return saved
 
 
 def _sample_response() -> PlaylistGenerateResponse:
@@ -158,9 +197,8 @@ async def test_playlist_service_generate_pipeline() -> None:
     yandex.export_playlist.return_value = "https://music.yandex.ru/users/testuser/playlists/1003"
 
     repo = AsyncMock()
-    saved = MagicMock()
-    saved.id = GENERATION_ID
-    repo.create.return_value = saved
+    repo.count_new_generations_since.return_value = 0
+    repo.create.return_value = _mock_saved_row()
 
     service = PlaylistService(
         llm=llm, retrieval=retrieval, scoring=scoring, yandex=yandex, repo=repo
@@ -188,6 +226,11 @@ async def test_playlist_service_generate_pipeline() -> None:
         login="testuser",
     )
     repo.create.assert_awaited_once()
+    create_kwargs = repo.create.await_args.kwargs
+    assert create_kwargs["latency_ms"] is not None
+    assert create_kwargs["latency_breakdown"]["llm"] >= 0
+    assert create_kwargs["warnings_count"] == 0
+    assert create_kwargs["options"]["diversity"] == "high"
 
     assert result.id == GENERATION_ID
     assert result.prompt == "dark synthwave for night coding"
@@ -203,6 +246,120 @@ async def test_playlist_service_generate_pipeline() -> None:
     assert result.options is not None
     assert result.options.diversity == "high"
     assert result.warnings == []
+    assert result.latency_ms == 1200
+    assert result.feedback is None
+
+
+@pytest.mark.asyncio
+async def test_playlist_service_use_library_expands_and_persists_flag() -> None:
+    llm = AsyncMock()
+    llm.parse_prompt.return_value = SAMPLE_PROFILE
+
+    retrieval = AsyncMock()
+    retrieval.collect_candidates.return_value = [
+        TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"])
+    ]
+    retrieval.expand_from_artists = AsyncMock(
+        return_value=[
+            TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"]),
+            TrackCandidate(id="99", title="Lib Hit", artists=["Library Artist"]),
+        ]
+    )
+
+    scoring = AsyncMock()
+    scoring.rank_pool = AsyncMock(
+        return_value=(
+            [
+                (TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"]), 0.9),
+                (TrackCandidate(id="99", title="Lib Hit", artists=["Library Artist"]), 0.88),
+            ],
+            "embedding",
+        )
+    )
+    scoring.select = MagicMock(return_value=SAMPLE_RANKED)
+
+    yandex = AsyncMock()
+    yandex.fetch_library_artist_names = AsyncMock(return_value=["Library Artist", "Other"])
+    yandex.init_client.return_value = MagicMock()
+    yandex.export_playlist.return_value = "https://music.yandex.ru/users/testuser/playlists/1003"
+
+    repo = AsyncMock()
+    repo.count_new_generations_since.return_value = 0
+    saved = _mock_saved_row()
+    saved.options = {
+        "track_count": 25,
+        "instrumental_only": False,
+        "exclude_artists": [],
+        "diversity": "normal",
+        "use_library": True,
+    }
+    repo.create.return_value = saved
+
+    service = PlaylistService(
+        llm=llm, retrieval=retrieval, scoring=scoring, yandex=yandex, repo=repo
+    )
+    result = await service.generate(
+        prompt="dark synthwave for night coding",
+        track_count=25,
+        instrumental_only=False,
+        access_token="oauth-token",
+        login="testuser",
+        user_id=USER_ID,
+        use_library=True,
+    )
+
+    yandex.fetch_library_artist_names.assert_awaited_once()
+    retrieval.expand_from_artists.assert_awaited()
+    create_kwargs = repo.create.await_args.kwargs
+    assert create_kwargs["options"]["use_library"] is True
+    assert result.options is not None
+    assert result.options.use_library is True
+
+
+@pytest.mark.asyncio
+async def test_playlist_service_use_library_fetch_failure_adds_warning() -> None:
+    llm = AsyncMock()
+    llm.parse_prompt.return_value = SAMPLE_PROFILE
+
+    retrieval = AsyncMock()
+    retrieval.collect_candidates.return_value = [
+        TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"])
+    ]
+
+    candidate = TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"])
+    scoring = AsyncMock()
+    scoring.rank_pool = AsyncMock(return_value=([(candidate, 0.924)], "embedding"))
+    scoring.select = MagicMock(return_value=SAMPLE_RANKED)
+
+    yandex = AsyncMock()
+    yandex.fetch_library_artist_names = AsyncMock(side_effect=RuntimeError("yandex down"))
+    yandex.init_client.return_value = MagicMock()
+    yandex.export_playlist.return_value = "https://music.yandex.ru/users/testuser/playlists/1003"
+
+    repo = AsyncMock()
+    repo.count_new_generations_since.return_value = 0
+    saved = _mock_saved_row(
+        warnings=["Не удалось загрузить лайки/недавнее — генерируем без персонализации."]
+    )
+    repo.create.return_value = saved
+
+    service = PlaylistService(
+        llm=llm, retrieval=retrieval, scoring=scoring, yandex=yandex, repo=repo
+    )
+    await service.generate(
+        prompt="dark synthwave for night coding",
+        track_count=25,
+        instrumental_only=False,
+        access_token="oauth-token",
+        login="testuser",
+        user_id=USER_ID,
+        use_library=True,
+    )
+
+    retrieval.expand_from_artists.assert_not_called()
+    create_kwargs = repo.create.await_args.kwargs
+    assert create_kwargs["warnings_count"] == 1
+    assert "персонализации" in create_kwargs["warnings"][0]
 
 
 @pytest.mark.asyncio
@@ -235,8 +392,31 @@ async def test_playlist_service_feedback_uses_rank_pool_merge() -> None:
     yandex.export_playlist.return_value = "https://music.yandex.ru/users/testuser/playlists/1005"
 
     repo = AsyncMock()
-    saved = MagicMock()
-    saved.id = GENERATION_ID
+    repo.count_new_generations_since.return_value = 0
+    saved = _mock_saved_row()
+    saved.pool_stats = {"raw": 2, "clean": 2, "selected": 2}
+    saved.tracks = [
+        {
+            "id": "2",
+            "title": "B",
+            "artist": "New Band",
+            "duration_ms": 180000,
+            "similarity_score": 0.95,
+        },
+        {
+            "id": "1",
+            "title": "A",
+            "artist": "Other Band",
+            "duration_ms": 180000,
+            "similarity_score": 0.9,
+        },
+    ]
+    saved.options = {
+        "track_count": 2,
+        "instrumental_only": False,
+        "exclude_artists": [],
+        "diversity": "normal",
+    }
     repo.create.return_value = saved
 
     service = PlaylistService(
@@ -281,10 +461,9 @@ async def test_playlist_service_source_id_skips_llm() -> None:
     source.profile = SAMPLE_PROFILE.model_dump()
 
     repo = AsyncMock()
+    repo.count_new_generations_since.return_value = 0
     repo.get_by_id_for_user.return_value = source
-    saved = MagicMock()
-    saved.id = GENERATION_ID
-    repo.create.return_value = saved
+    repo.create.return_value = _mock_saved_row(source_id=source_id)
 
     service = PlaylistService(
         llm=llm, retrieval=retrieval, scoring=scoring, yandex=yandex, repo=repo
@@ -302,11 +481,16 @@ async def test_playlist_service_source_id_skips_llm() -> None:
     llm.parse_prompt.assert_not_awaited()
     repo.get_by_id_for_user.assert_awaited_once_with(source_id, USER_ID)
     assert result.id == GENERATION_ID
+    assert result.source_id == source_id
+    create_kwargs = repo.create.await_args.kwargs
+    assert create_kwargs["source_id"] == source_id
+    assert create_kwargs["latency_breakdown"]["llm"] == 0
 
 
 @pytest.mark.asyncio
 async def test_playlist_service_source_id_not_found() -> None:
     repo = AsyncMock()
+    repo.count_new_generations_since.return_value = 0
     repo.get_by_id_for_user.return_value = None
     service = PlaylistService(
         llm=AsyncMock(),
@@ -481,3 +665,207 @@ async def test_generate_playlist_unauthorized() -> None:
         )
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_playlist_service_set_feedback() -> None:
+    repo = AsyncMock()
+    updated = _mock_saved_row(feedback=1)
+    updated.feedback_at = datetime.now(UTC)
+    repo.update_feedback.return_value = updated
+
+    service = PlaylistService(
+        llm=AsyncMock(),
+        retrieval=AsyncMock(),
+        scoring=AsyncMock(),
+        yandex=AsyncMock(),
+        repo=repo,
+    )
+    result = await service.set_feedback(GENERATION_ID, USER_ID, value="like")
+
+    repo.update_feedback.assert_awaited_once_with(
+        GENERATION_ID,
+        USER_ID,
+        feedback=1,
+    )
+    assert result.id == GENERATION_ID
+    assert result.feedback == "like"
+    assert result.feedback_at is not None
+
+
+@pytest.mark.asyncio
+async def test_playlist_service_set_feedback_not_found() -> None:
+    repo = AsyncMock()
+    repo.update_feedback.return_value = None
+    service = PlaylistService(
+        llm=AsyncMock(),
+        retrieval=AsyncMock(),
+        scoring=AsyncMock(),
+        yandex=AsyncMock(),
+        repo=repo,
+    )
+    with pytest.raises(NotFoundError):
+        await service.set_feedback(GENERATION_ID, USER_ID, value="dislike")
+
+
+@pytest.mark.asyncio
+async def test_set_playlist_feedback_endpoint() -> None:
+    from app.schemas.playlist import PlaylistFeedbackResponse
+
+    user = User(id=USER_ID, yandex_uid=42, login="testuser")
+    session = Session(
+        id=uuid4(),
+        user_id=user.id,
+        encrypted_token=encrypt_token("oauth-token"),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    session.user = user
+
+    mock_service = AsyncMock()
+    mock_service.set_feedback.return_value = PlaylistFeedbackResponse(
+        id=GENERATION_ID,
+        feedback="like",
+        feedback_at=datetime.now(UTC),
+    )
+
+    app.dependency_overrides[get_current_session] = lambda: session
+    app.dependency_overrides[get_playlist_service] = lambda: mock_service
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.patch(
+            f"/api/v1/playlists/{GENERATION_ID}/feedback",
+            headers={"Authorization": f"Bearer {session.id}"},
+            json={"value": "like"},
+        )
+        clear_response = await client.patch(
+            f"/api/v1/playlists/{GENERATION_ID}/feedback",
+            headers={"Authorization": f"Bearer {session.id}"},
+            json={"value": None},
+        )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["feedback"] == "like"
+    assert clear_response.status_code == 200
+    assert mock_service.set_feedback.await_count == 2
+    assert mock_service.set_feedback.await_args_list[0].kwargs["value"] == "like"
+    assert mock_service.set_feedback.await_args_list[1].kwargs["value"] is None
+
+
+@pytest.mark.asyncio
+async def test_playlist_service_quota_blocks_new_generation() -> None:
+    repo = AsyncMock()
+    repo.count_new_generations_since.return_value = 10
+    service = PlaylistService(
+        llm=AsyncMock(),
+        retrieval=AsyncMock(),
+        scoring=AsyncMock(),
+        yandex=AsyncMock(),
+        repo=repo,
+    )
+    with pytest.raises(QuotaExceededError) as exc_info:
+        await service.generate(
+            prompt="dark synthwave",
+            track_count=25,
+            instrumental_only=False,
+            access_token="t",
+            login="u",
+            user_id=USER_ID,
+        )
+    assert exc_info.value.remaining == 0
+    assert exc_info.value.limit == 10
+    llm = service._llm
+    llm.parse_prompt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_playlist_service_quota_skips_regen() -> None:
+    llm = AsyncMock()
+    retrieval = AsyncMock()
+    retrieval.collect_candidates.return_value = [
+        TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"])
+    ]
+    candidate = TrackCandidate(id="9442712", title="Nightcall", artists=["Kavinsky"])
+    scoring = AsyncMock()
+    scoring.rank_pool = AsyncMock(return_value=([(candidate, 0.9)], "embedding"))
+    scoring.select = MagicMock(return_value=SAMPLE_RANKED)
+    yandex = AsyncMock()
+    yandex.init_client.return_value = MagicMock()
+    yandex.export_playlist.return_value = "https://music.yandex.ru/users/u/playlists/1"
+
+    repo = AsyncMock()
+    repo.count_new_generations_since.return_value = 99
+    source = _mock_saved_row()
+    source.id = uuid4()
+    repo.get_by_id_for_user.return_value = source
+    repo.create.return_value = _mock_saved_row(source_id=source.id)
+
+    service = PlaylistService(
+        llm=llm, retrieval=retrieval, scoring=scoring, yandex=yandex, repo=repo
+    )
+    result = await service.generate(
+        prompt="dark synthwave",
+        track_count=25,
+        instrumental_only=False,
+        access_token="t",
+        login="u",
+        user_id=USER_ID,
+        source_id=source.id,
+    )
+
+    repo.count_new_generations_since.assert_not_awaited()
+    assert result.id == GENERATION_ID
+
+
+@pytest.mark.asyncio
+async def test_get_quota_and_generate_quota_endpoints() -> None:
+    user = User(id=USER_ID, yandex_uid=42, login="testuser")
+    session = Session(
+        id=uuid4(),
+        user_id=user.id,
+        encrypted_token=encrypt_token("oauth-token"),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    session.user = user
+
+    mock_service = AsyncMock()
+    mock_service.get_quota.return_value = PlaylistQuotaResponse(
+        limit=10,
+        used=10,
+        remaining=0,
+        unlimited=False,
+        resets_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    mock_service.generate.side_effect = QuotaExceededError(
+        "Дневной лимит генераций исчерпан (10/сутки).",
+        limit=10,
+        used=10,
+        remaining=0,
+        resets_at="2099-01-02T00:00:00+00:00",
+    )
+
+    app.dependency_overrides[get_current_session] = lambda: session
+    app.dependency_overrides[get_playlist_service] = lambda: mock_service
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        quota_response = await client.get(
+            "/api/v1/playlists/quota",
+            headers={"Authorization": f"Bearer {session.id}"},
+        )
+        with patch("app.api.v1.endpoints.playlists.decrypt_token", return_value="oauth-token"):
+            gen_response = await client.post(
+                "/api/v1/playlists/generate",
+                headers={"Authorization": f"Bearer {session.id}"},
+                json={"prompt": "dark synthwave"},
+            )
+
+    app.dependency_overrides.clear()
+
+    assert quota_response.status_code == 200
+    assert quota_response.json()["remaining"] == 0
+    assert gen_response.status_code == 429
+    detail = gen_response.json()["detail"]
+    assert detail["limit"] == 10
+    assert detail["remaining"] == 0
+    assert "лимит" in detail["message"].lower()

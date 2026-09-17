@@ -1,4 +1,5 @@
 export type DiversityMode = "normal" | "high";
+export type FeedbackValue = "like" | "dislike";
 
 export interface MusicProfile {
   playlist_title: string;
@@ -17,7 +18,18 @@ export interface PlaylistGenerateRequest {
   instrumental_only?: boolean;
   exclude_artists?: string[];
   diversity?: DiversityMode;
+  use_library?: boolean;
   source_id?: string | null;
+}
+
+export interface PlaylistFeedbackRequest {
+  value: FeedbackValue | null;
+}
+
+export interface PlaylistFeedbackResponse {
+  id: string;
+  feedback: FeedbackValue | null;
+  feedback_at: string | null;
 }
 
 export interface PlaylistTrackResponse {
@@ -39,6 +51,7 @@ export interface PlaylistGenerationOptions {
   instrumental_only: boolean;
   exclude_artists: string[];
   diversity: DiversityMode;
+  use_library: boolean;
 }
 
 export interface PlaylistGenerateResponse {
@@ -52,6 +65,9 @@ export interface PlaylistGenerateResponse {
   profile: MusicProfile;
   options?: PlaylistGenerationOptions | null;
   warnings?: string[];
+  source_id?: string | null;
+  latency_ms?: number | null;
+  feedback?: FeedbackValue | null;
 }
 
 export interface PlaylistHistoryItem {
@@ -62,6 +78,9 @@ export interface PlaylistHistoryItem {
   pool_stats?: PlaylistPoolStats | null;
   options?: PlaylistGenerationOptions | null;
   created_at: string;
+  source_id?: string | null;
+  latency_ms?: number | null;
+  feedback?: FeedbackValue | null;
 }
 
 export interface PlaylistHistoryResponse {
@@ -70,11 +89,20 @@ export interface PlaylistHistoryResponse {
   offset: number;
 }
 
+export interface PlaylistQuotaResponse {
+  limit: number;
+  used: number;
+  remaining: number;
+  unlimited: boolean;
+  resets_at: string;
+}
+
 export interface PlaylistFormDraft {
   prompt: string;
   trackCount: number;
   instrumentalOnly: boolean;
   excludeArtists: string;
   diversity: DiversityMode;
+  useLibrary: boolean;
   sourceId: string | null;
 }

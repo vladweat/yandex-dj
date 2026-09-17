@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 
@@ -67,8 +68,14 @@ export function DebugPage() {
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold">Отладка</h2>
-            <p className="text-sm text-slate-400">Данные из yandex-music API (account/status)</p>
+            <h2 className="font-display text-xl font-semibold tracking-tight">Яндекс account</h2>
+            <p className="text-sm text-slate-400">
+              account/status. Полная генерация — в{" "}
+              <Link href="/lab" className="text-slate-300 underline-offset-2 hover:underline">
+                Lab
+              </Link>
+              .
+            </p>
           </div>
           <Button type="button" variant="secondary" size="sm" disabled={refreshing} onClick={() => void handleRefresh()}>
             {refreshing ? <Loader2 className="animate-spin" /> : <RefreshCw />}

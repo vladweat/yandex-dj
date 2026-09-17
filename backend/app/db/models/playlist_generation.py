@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, SmallInteger, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,9 @@ if TYPE_CHECKING:
 
 class PlaylistGeneration(Base):
     __tablename__ = "playlist_generations"
+    __table_args__ = (
+        Index("ix_playlist_generations_user_id_created_at", "user_id", "created_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -33,6 +36,12 @@ class PlaylistGeneration(Base):
         nullable=True,
         index=True,
     )
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    latency_breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    warnings: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
+    warnings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    feedback: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    feedback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

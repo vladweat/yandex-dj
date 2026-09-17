@@ -1,9 +1,11 @@
+import secrets
 import uuid
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.models.session import Session
 from app.db.session import get_db
 from app.repositories.playlist_generation_repository import PlaylistGenerationRepository
@@ -12,6 +14,7 @@ from app.repositories.user_repository import UserRepository
 from app.services.auth_service import AuthService
 from app.services.health_service import HealthService
 from app.services.llm_service import LLMService
+from app.services.metrics_service import MetricsService
 from app.services.playlist_service import PlaylistService
 from app.services.retrieval_service import RetrievalService
 from app.services.scoring_service import ScoringService
@@ -61,6 +64,28 @@ def get_scoring_service() -> ScoringService:
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async for session in get_db():
         yield session
+
+
+def get_metrics_service(
+    db: AsyncSession = Depends(get_db_session),
+) -> MetricsService:
+    return MetricsService(repo=PlaylistGenerationRepository(db))
+
+
+async def require_metrics_token(
+    x_metrics_token: str | None = Header(None, alias="X-Metrics-Token"),
+) -> None:
+    expected = settings.metrics_token.strip()
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Metrics endpoint is not configured (METRICS_TOKEN)",
+        )
+    if not x_metrics_token or not secrets.compare_digest(x_metrics_token, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing X-Metrics-Token",
+        )
 
 
 def get_playlist_service(

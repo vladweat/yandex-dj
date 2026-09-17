@@ -63,7 +63,7 @@ Embeddings подключаются **сразу** (не откладывают�
 
 Авторизация UI: Bearer `session_id` (Device Flow), не cookie. Подробнее: [FRONTEND.md](FRONTEND.md).
 
-Telegram-бот — этап 7 backlog ([DEVELOPMENT.md](DEVELOPMENT.md)).
+Telegram-бот — PRODUCT P1.1 ([PRODUCT.md](PRODUCT.md)); чеклист — [DEVELOPMENT.md](DEVELOPMENT.md) § этап 7+.
 
 ## База данных
 

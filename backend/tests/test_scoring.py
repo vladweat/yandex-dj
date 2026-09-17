@@ -8,6 +8,7 @@ from app.services.scoring_service import ScoringService
 from app.utils.scoring import (
     adaptive_score_floor,
     apply_diversity_filter,
+    apply_library_artist_boost,
     apply_reference_anchor_boost,
     build_prompt_text,
     candidates_for_embedding,
@@ -350,6 +351,16 @@ def test_apply_reference_anchor_boost_promotes_anchor_artist() -> None:
     ]
     boosted = apply_reference_anchor_boost(ranked, profile)
     assert boosted[0][0].id == "2"
+
+
+def test_apply_library_artist_boost_promotes_library_artist() -> None:
+    ranked = [
+        (_track("1", "Other", "Unknown Band"), 0.86),
+        (_track("2", "Hit", "My Fav Artist"), 0.84),
+    ]
+    boosted = apply_library_artist_boost(ranked, ["My Fav Artist"], boost=0.05)
+    assert boosted[0][0].id == "2"
+    assert boosted[0][1] == pytest.approx(0.89)
 
 
 def test_merge_embedding_rank_uses_only_embedded_scores() -> None:

@@ -36,3 +36,22 @@ class NotFoundError(AppError):
 
 class PipelineTimeoutError(AppError):
     """Пайплайн генерации превысил PIPELINE_TIMEOUT_SEC."""
+
+
+class QuotaExceededError(AppError):
+    """Превышена soft-квота генераций за сутки."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        limit: int,
+        used: int,
+        remaining: int,
+        resets_at: str,
+    ) -> None:
+        super().__init__(message)
+        self.limit = limit
+        self.used = used
+        self.remaining = remaining
+        self.resets_at = resets_at

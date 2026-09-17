@@ -9,9 +9,13 @@
 | Путь | Экран |
 | --- | --- |
 | `/login` | OAuth Device Flow: код + ссылка на ya.ru/device, poll до `authenticated` |
-| `/` | Генерация + результат + история; `?prompt=` prefill |
-| `/health` | Статус API (опционально, для отладки) |
-| `/debug` | Статус аккаунта Яндекс Музыки (опционально) |
+| `/` | **Пользовательский** UI: textarea-hero → результат → история; `?prompt=` prefill |
+| `/lab` | **Полный** UI (опции, MusicProfile, pool_stats, scores) — для отладки |
+| `/gallery` | Публичная галерея промптов (без логина) → `/?prompt=…` |
+| `/health` | Статус API (опционально) |
+| `/debug` | Статус аккаунта Яндекс Музыки; ссылка на `/lab` |
+
+Форма/результат/история принимают `variant: "simple" | "full"`.
 
 ## Авторизация (отличие от docwise)
 
@@ -29,17 +33,28 @@ Prompt DJ: **Bearer `session_id`** (UUID из Device Flow).
 
 `auth-provider.tsx`: boot через `fetchMe()`; при 401 — сброс сессии. Logout — очистка `localStorage` + сброс TanStack Query / Zustand (`reset-client-state.ts`).
 
-## Главный экран (генерация)
+## Главный экран `/` (пользователь)
 
-Одна колонка (без split-pane docwise):
+Одна колонка генерации + история сбоку (чтобы форма и результат жили в одном окне):
 
-1. **Форма:** промпт, `track_count`, `instrumental_only`, `diversity` (normal/high), `exclude_artists` (через запятую); кнопка «Отменить» во время запроса (`AbortController`).
-2. **Prefill:** `?prompt=…` из query; draft из истории («Повторить») — **включая options**.
-3. **Быстрые примеры:** кнопки под textarea (kitchen / coding / synthwave).
-4. **Submit:** `POST /api/v1/playlists/generate`; при `401` — сброс → `/login`; `504` — toast таймаута; `warnings` — info toast.
-5. **Состояния:** idle → loading («Генерируем…») → success | error; сеть/502/503 → баннер «API недоступен».
-6. **Результат:** `title`, `description`, ссылка в Яндекс, «Копировать ссылку и промпт», «Ещё вариант» (`source_id` + **те же options**), badges `pool_stats`, блок `MusicProfile`, таблица треков.
-7. **История:** `GET /api/v1/playlists` — список с `options`; клик → `GET /playlists/{id}`; «Повторить» → prefill промпта **и опций**.
+1. **Hero:** бренд Prompt DJ + короткий tagline + textarea (после результата форма сжимается: `compact`).
+2. **Форма (simple):** промпт, 3 чипа-ситуации (до первого результата), ссылка на `/gallery`, чекбокс `use_library`, soft-квота; дефолты: 25 треков, `diversity=normal`. «Отменить» + мягкий latency copy.
+3. **Prefill:** `?prompt=…`; draft из истории («Снова»). AuthGate → `?next=` (cold share links).
+4. **Submit:** `POST /api/v1/playlists/generate`; при `401` → `/login`; `504` / `429` / `warnings` — как раньше.
+5. **Результат (simple):** primary — «Открыть в Яндекс Музыке» + like/dislike; secondary — «Ещё вариант», share/copy; треки **свёрнуты** (раскрываются по клику); **без** MusicProfile / pool_stats.
+6. **История:** справа rail на `lg+`; на мобиле — кнопка «История» → drawer. Не занимает вертикаль генерации.
+
+## Lab `/lab` (полный функционал)
+
+Тот же пайплайн с `variant="full"`:
+
+1. Все опции: `track_count`, `diversity`, `instrumental_only`, `exclude_artists`, `use_library`.
+2. Примеры — 7 golden-промптов.
+3. Результат: copy/share, MusicProfile, badges `raw/clean/selected`, таблица со `similarity_score`.
+4. История с pool_stats и «Повторить» (все options).
+5. Ссылка на `/debug` (Yandex account).
+
+Онбординг-карточка (`onboarding-panel.tsx`) снята с `/` — ситуации живут в чипах формы; компонент оставлен на случай возврата.
 
 Ошибки — тост/баннер, без разрыва страницы:
 
@@ -48,6 +63,7 @@ Prompt DJ: **Bearer `session_id`** (UUID из Device Flow).
 | `0` / сеть | Баннер + тост «API недоступен» |
 | `401` | Сброс `session_id`, тост, редирект на `/login` |
 | `422` | Валидация промпта под полем (1–2000 символов, `track_count` 1–50) |
+| `429` | Баннер soft-квоты + тост; кнопка генерации disabled; «Ещё вариант» доступен |
 | `499` (abort) | Тост «Генерация отменена» |
 | `502` / `503` | Баннер/тост «API недоступен» |
 | `504` | Тост: превышен `PIPELINE_TIMEOUT_SEC` |
@@ -60,18 +76,21 @@ Prompt DJ: **Bearer `session_id`** (UUID из Device Flow).
 ```bash
 make up-frontend   # http://localhost:3001
 # 1) /login → Device Flow
-# 2) / → пример «под настроение пока варю макароны»
-# 3) Ожидание: 25 треков, profile-блок, запись в «История»
-# 4) «Ещё вариант» → новый плейлист без LLM; история обновилась
-# 5) /?prompt=test → промпт подставлен
+# 2) / → чип «Кухня» или свой промпт → «Собрать плейлист»
+# 3) Ожидание: primary «Открыть в Яндекс Музыке» + like/dislike; без profile/scores
+# 4) «Ещё вариант» → новый плейлист; история обновилась
+# 5) /?prompt=test → промпт подставлен (гостевая ссылка переживает login)
+# 6) /gallery → карточка → /?prompt=…
+# 7) /lab → полный UI (опции, MusicProfile, pool_stats)
+# 8) Golden UI checklist — см. PLAYLIST_QUALITY.md § «Golden UI checklist»
 ```
 
 ## Shell
 
-- `AppHeader`: логотип, навигация (`/`), логин Яндекса (`login`), кнопка «Выйти».
-- `AuthGate` на защищённых маршрутах → `/login` без сессии.
-- `GuestGate` на `/login` → редирект на `/` при валидной сессии.
-- Тёмная тема: CSS-переменные в `globals.css` (как docwise).
+- `AppHeader`: логотип, навигация (Галерея всегда; Генерация + Lab после логина), «Войти» / «Выйти». Lab подсвечивается и на `/debug`.
+- `AuthGate` на защищённых маршрутах → `/login?next=<path+query>` без сессии.
+- `GuestGate` на `/login` → редирект на `next` при валидной сессии.
+- Тема: Manrope + Unbounded через Google Fonts в runtime (offline Docker build без `next/font/google`); мягкий radial фон, glass-rail истории.
 
 ## Запреты UX
 
@@ -89,3 +108,17 @@ make up-frontend   # http://localhost:3001
 | `make typecheck` | `tsc --noEmit` |
 | `make test-frontend` | vitest (auth-gates + playlist form) |
 | `make logs-frontend` | Логи контейнера |
+
+## Бэклог UX (после MVP)
+
+Канон: [PRODUCT.md](PRODUCT.md). Ближайшее для UI:
+
+| ID | Что |
+|----|-----|
+| ~~P0.3~~ | Like / dislike на результате (`ThumbsUp` / `ThumbsDown`) |
+| ~~P1.2~~ | Галерея промптов → `?prompt=` |
+| ~~P1.3~~ | Чекбокс «Учитывать мою библиотеку» |
+| ~~P1.4~~ | Онбординг + ожидание 7–20 сек |
+| ~~P1.5~~ | Soft-квоты + UX лимита |
+| P2.3–P2.5 | Шаринг с UTMs; replace track; мягкий latency copy |
+| P1.1 | Telegram — отдельный клиент того же API |

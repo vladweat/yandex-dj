@@ -11,15 +11,15 @@ function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxP
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        "flex size-4 shrink-0 items-center justify-center rounded border border-slate-600 bg-slate-950 text-white outline-none",
-        "focus-visible:ring-2 focus-visible:ring-blue-500/60 data-[state=checked]:border-blue-500 data-[state=checked]:bg-blue-600",
+        "flex size-4 shrink-0 items-center justify-center rounded-md border border-white/15 bg-white/[0.03] text-slate-950 outline-none transition-colors",
+        "focus-visible:ring-2 focus-visible:ring-accent/40 data-[state=checked]:border-accent data-[state=checked]:bg-accent",
         "disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}
     >
       <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
-        <Check className="size-3" />
+        <Check className="size-3 stroke-[3]" />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   );

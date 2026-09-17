@@ -123,7 +123,7 @@
 | Web | Next.js 15 + Tailwind 4 + shadcn | **Основной UI** (каркас из docwise) |
 | REST API | FastAPI + uvicorn | Контракт для UI и интеграций |
 | CLI | click | Отладка, разорванный Device Flow |
-| Telegram | aiogram 3.x | Этап 7 ([DEVELOPMENT.md](DEVELOPMENT.md)) |
+| Telegram | aiogram 3.x | PRODUCT P1.1 ([PRODUCT.md](PRODUCT.md)) |
 
 API-контракты: [API.md](API.md). UX и маршруты: [FRONTEND.md](FRONTEND.md).
 

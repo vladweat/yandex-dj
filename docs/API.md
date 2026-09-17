@@ -257,6 +257,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
   "instrumental_only": false,
   "exclude_artists": ["Kavinsky"],
   "diversity": "normal",
+  "use_library": false,
   "source_id": null
 }
 ```
@@ -268,6 +269,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 | `instrumental_only` | bool | нет | `false` | передаётся в LLM как `vocal_type: instrumental_only` |
 | `exclude_artists` | string[] | нет | `[]` | max 20; убирает артистов из якорей и кандидатов |
 | `diversity` | `"normal"` \| `"high"` | нет | `"normal"` | `high` — жёстче diversity (1 трек/артист, 2 для якорей) |
+| `use_library` | bool | нет | `false` | soft bias: likes + recently played → доп. seeds + score boost; не hard filter |
 | `source_id` | UUID \| null | нет | `null` | своя генерация: reuse `MusicProfile`, LLM не вызывается; всегда **новый** плейлист в Яндексе |
 
 **Ответ `200`:**
@@ -306,9 +308,13 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
     "track_count": 25,
     "instrumental_only": false,
     "exclude_artists": ["Kavinsky"],
-    "diversity": "normal"
+    "diversity": "normal",
+    "use_library": false
   },
-  "warnings": []
+  "warnings": [],
+  "source_id": null,
+  "latency_ms": 8716,
+  "feedback": null
 }
 ```
 
@@ -326,8 +332,11 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 | `tracks[].similarity_score` | scoring | cosine similarity (embedding) или fallback-score; округление до 4 знаков |
 | `pool_stats` | retrieval + scoring | `raw` / `clean` (после pre-filter) / `selected`; диагностика полноты |
 | `profile` | LLM или reuse из `source_id` | полный `MusicProfile` после опций (`exclude_artists` и т.д.) |
-| `options` | запрос | `track_count`, `instrumental_only`, `exclude_artists`, `diversity` — для regen/history |
-| `warnings` | pipeline | напр. `exclude_artists` не сняты с якорей (нужно ≥4); не блокирует `200` |
+| `options` | запрос | `track_count`, `instrumental_only`, `exclude_artists`, `diversity`, `use_library` — для regen/history |
+| `warnings` | pipeline | напр. `exclude_artists` не сняты с якорей; сбой likes/recent при `use_library`; не блокирует `200`; persist в БД |
+| `source_id` | запрос / БД | `null` = новая генерация; иначе id родителя («Ещё вариант») |
+| `latency_ms` | pipeline | total ms пайплайна (persist) |
+| `feedback` | user | `"like"` \| `"dislike"` \| `null` |
 
 **Export (что происходит в Яндексе):**
 
@@ -335,7 +344,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 2. `users_playlists_insert_track(kind, track_id, album_id, at=i, revision=…)` — по одному, `revision` обновляется после каждой вставки
 3. `users_playlists_description(kind, description)` — описание из ответа API
 4. URL по `login` сессии и `kind` созданного плейлиста
-5. Persist в `playlist_generations` (история пользователя)
+5. Persist в `playlist_generations` (история + product metrics: latency, warnings, pool_stats, source_id)
 
 Подробности SDK: [YANDEX_MUSIC.md](YANDEX_MUSIC.md) § «Экспорт плейлиста».
 
@@ -344,10 +353,13 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 **Логи сервера (latency по этапам):**
 
 ```
-Playlist pipeline: llm=2140ms retrieval=3214ms scoring=1842ms export=1520ms total=8716ms tracks=25 method=embedding
+Playlist pipeline: llm=2140ms retrieval=3214ms scoring=1842ms export=1520ms total=8716ms tracks=25 method=embedding raw=180 clean=72 selected=25 track_count=25 full_n=True warnings_count=0 diversity=normal use_library=False library_artists=0 source_id=None id=…
 ```
 
 `method`: `embedding` | `fallback`. Смотреть: `docker compose logs -f api` или `make logs`.
+
+Аналитика SQL: [analytics/product_metrics.sql](analytics/product_metrics.sql).  
+HTTP-отчёт (P0.4): `GET /api/v1/metrics/product` — см. § Metrics ниже.
 
 **Ошибки:**
 
@@ -356,7 +368,8 @@ Playlist pipeline: llm=2140ms retrieval=3214ms scoring=1842ms export=1520ms tota
 | `401` | нет/невалидный Bearer, истёкшая сессия | `Invalid or expired session` |
 | `404` | `source_id` не найден или чужой | `Source generation not found` |
 | `422` | пустой промпт, `track_count` вне 1–50, промпт > 2000 символов | Pydantic validation |
-| `504` | превышен `PIPELINE_TIMEOUT_SEC` (default 45) | `Playlist generation exceeded …s (PIPELINE_TIMEOUT_SEC)` |
+| `504` | превышен `PIPELINE_TIMEOUT_SEC` (default 90) | `Playlist generation exceeded …s (PIPELINE_TIMEOUT_SEC)` |
+| `429` | soft-квота новых генераций/сутки (`DAILY_GENERATION_LIMIT`, default 10) | `{message, limit, used, remaining, resets_at}`; «Ещё вариант» (`source_id`) не считается |
 | `500` | scoring вернул 0 треков или внутренняя ошибка ранжирования | `Scoring returned no tracks` |
 | `502` | Яндекс API недоступен после retry, ошибка export (создание/вставка/описание) | текст исключения |
 | `503` | LLM недоступен (`OPENAI_API_KEY`), retrieval без кандидатов, сбой retrieval | `OPENAI_API_KEY is not configured`, `No candidates found for the prompt` |
@@ -373,6 +386,21 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 `SESSION_ID` — из `POST /auth/device-flow/poll` (`session_id` в ответе) или `GET /auth/me`.
 
 **Отладка по этапам (без export):** отдельные эндпоинты `POST /llm/parse`, `POST /retrieval/candidates`, `POST /scoring/rank` или CLI `prompt-dj scoring rank --prompt "…" --token "$YANDEX_OAUTH_TOKEN"`.
+
+### `GET /api/v1/playlists/quota`
+
+Soft-квота новых генераций за текущие UTC-сутки (`DAILY_GENERATION_LIMIT`, default 10; `0` = без лимита). Считаются только записи с `source_id IS NULL` («Ещё вариант» не расходует).
+
+**Ответ `200`:**
+```json
+{
+  "limit": 10,
+  "used": 3,
+  "remaining": 7,
+  "unlimited": false,
+  "resets_at": "2026-09-18T00:00:00Z"
+}
+```
 
 ### `GET /api/v1/playlists`
 
@@ -394,9 +422,13 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
         "track_count": 25,
         "instrumental_only": false,
         "exclude_artists": [],
-        "diversity": "high"
+        "diversity": "high",
+        "use_library": false
       },
-      "created_at": "2026-09-15T12:00:00Z"
+      "created_at": "2026-09-15T12:00:00Z",
+      "source_id": null,
+      "latency_ms": 8716,
+      "feedback": null
     }
   ],
   "limit": 20,
@@ -406,9 +438,35 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 
 ### `GET /api/v1/playlists/{id}`
 
-Полная запись генерации (тот же контракт, что ответ `POST /generate`).
+Полная запись генерации (тот же контракт, что ответ `POST /generate`). Warnings читаются из БД.
 
 **Ошибки:** `401`, `404` (чужой или несуществующий id).
+
+### `PATCH /api/v1/playlists/{id}/feedback`
+
+Like / dislike на результат генерации (свой id). Повторный тот же голос или `null` снимает оценку.
+
+**Запрос:**
+```json
+{
+  "value": "like"
+}
+```
+
+| Поле | Тип | Ограничения |
+|------|-----|-------------|
+| `value` | `"like"` \| `"dislike"` \| `null` | `null` — сброс |
+
+**Ответ `200`:**
+```json
+{
+  "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+  "feedback": "like",
+  "feedback_at": "2026-09-16T12:00:00Z"
+}
+```
+
+**Ошибки:** `401`, `404`, `422`.
 
 ---
 
@@ -524,6 +582,44 @@ url = f"https://music.yandex.ru/users/{login}/playlists/{playlist.kind}"
   }
 }
 ```
+
+---
+
+## Metrics (admin)
+
+### `GET /api/v1/metrics/product`
+
+Агрегаты по `playlist_generations` за окно `days` (1–90, default 7).  
+Заголовок: `X-Metrics-Token: <METRICS_TOKEN>`. Без `METRICS_TOKEN` в env → `503`.
+
+```json
+{
+  "window_days": 7,
+  "total_generations": 42,
+  "latency_p50_ms": 8200.0,
+  "latency_p95_ms": 14500.0,
+  "latency_avg_ms": 9100.0,
+  "full_n_rate": 0.93,
+  "warnings_rate": 0.12,
+  "regen_rate": 0.28,
+  "return_7d": 0.35,
+  "like_rate": 0.7,
+  "dislike_rate": 0.3,
+  "avg_clean": 58.2,
+  "with_latency": 40,
+  "with_feedback": 10,
+  "regen_count": 12,
+  "returning_users": 7,
+  "active_users": 20
+}
+```
+
+```bash
+curl -sS "http://localhost:8000/api/v1/metrics/product?days=7" \
+  -H "X-Metrics-Token: $METRICS_TOKEN" | jq .
+```
+
+Эквивалент SQL: [analytics/product_metrics.sql](analytics/product_metrics.sql).
 
 ---
 

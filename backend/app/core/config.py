@@ -25,7 +25,9 @@ class Settings(BaseSettings):
     min_candidates_pool: int = 100
     target_candidates_pool: int = 150
     max_tracks_per_artist: int = 2
-    pipeline_timeout_sec: int = 45
+    pipeline_timeout_sec: int = 90
+    # Soft freemium: new generations/day (source_id IS NULL). 0 = unlimited.
+    daily_generation_limit: int = 10
     track_cache_ttl_sec: int = 86400
     artist_tracks_limit: int = 20
     search_tracks_per_query: int = 50
@@ -41,6 +43,13 @@ class Settings(BaseSettings):
     # После первого scoring — добор по лучшим не-якорным
     feedback_artists_limit: int = 8
     feedback_similar_seeds: int = 8
+    # Soft bias из likes / recently played (use_library)
+    library_artist_limit: int = 24
+    library_seed_artists: int = 8
+    library_similar_seeds: int = 6
+    library_likes_track_limit: int = 80
+    library_recent_full_models: int = 40
+    library_artist_boost: float = 0.025
     # 0 = embed весь пул кандидатов (до max_candidates)
     scoring_embed_limit: int = 0
     embedding_batch_size: int = 64
@@ -50,6 +59,8 @@ class Settings(BaseSettings):
     api_port: int = 8000
     cors_origins: str = DEFAULT_CORS_ORIGINS
     session_ttl_hours: int = 720
+    # Shared secret for GET /metrics/product (empty = endpoint disabled)
+    metrics_token: str = ""
 
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
