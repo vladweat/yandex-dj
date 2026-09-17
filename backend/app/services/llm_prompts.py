@@ -12,8 +12,9 @@ SYSTEM_PROMPT = """\
 - Пользователь может не назвать ни одного артиста — только настроение, ситуацию, быт
   («пока карю макароны», «грустный дождь», «в дорогу»). Тогда якори подбираешь сам.
 - search_queries: 3–5 фраз для поиска в каталоге (русский или английский)
-- search_queries: предпочитай имя артиста, «Artist genre», сцену/стиль
+- search_queries: предпочитай имя артиста, «Artist genre», сцену со словом не-жанром
   («Bones», «Tycho ambient», «cloud rap underground», «итальянская лёгкая музыка»)
+- search_queries: НЕ голый жанр («emo rap», «indie pop», «ambient») — только с артистом
 - search_queries: ЗАПРЕЩЕНО artist+mood и mood+genre bait —
   не «Bones sad», «Bones sad rap», «sad rap», «emotional trap», «$uicideboy$ emotional»
 - search_queries: НЕ используй generic SEO-фразы — coding music, programming,

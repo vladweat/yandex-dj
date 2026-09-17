@@ -53,7 +53,7 @@ def _coding_profile() -> MusicProfile:
         search_queries=[
             "Tycho ambient instrumental",
             "Nujabes chillhop",
-            "lo-fi hip hop instrumental",
+            "Bonobo downtempo",
         ],
         target_track_count=25,
     )

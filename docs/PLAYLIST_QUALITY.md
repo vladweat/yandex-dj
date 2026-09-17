@@ -16,7 +16,7 @@
 | `pool_stats` в ответе | ✅ `{raw, clean, selected}` |
 | Хвост / якоря / latency | ✅ gap, cap 60% hard-якорей, `rank_pool_merge`, `SCORING_EMBED_LIMIT=0` |
 | Situational golden | ✅ сильный cold-start (кухня/код/сон…) |
-| Named-artist + constraints | ✅ Q1–Q5: search hygiene, SEO, hard/soft, plateau, `exclude_languages` / diversity hint |
+| Named-artist + constraints | ✅ Q1–Q5 + structural: genre-only search ban, type beat, ref near-dup |
 | Следующий фокус | Продукт — [PRODUCT.md](PRODUCT.md); пайплайн только с регрессом golden |
 
 **Не ходить по кругу:** не добавлять regex под конкретный промпт/жанр.  
@@ -101,9 +101,10 @@ user prompt
 5. SEO-лейблы: `Vinyl Sounds`, `MoodMode`, `Waco Texas Metal`
 6. Mood-keyword artist: `Cozy'`, `COZY YiELDS`, `Melancholy Mø`
 7. Mood-keyword title: `Cozy Forever`, `Sad Vibes`
-8. Mood/genre-as-title: `Sad Rap`, `Get Est Rap` (шум + жанр)
-9. Reference в title без исполнителя (`Parcel` ≈ `Parcels`, `Nightcall - Kavinsky`)
-10. Точный match артистов (не `Parcel` ≈ `Parcels` в поле artist)
+8. Mood/genre-as-title: `Sad Rap`, `Get Est Rap`, `Asterisk Gang Emo Rap`, long genre-stack
+9. Production spam: `type beat` / `free beat`
+10. Reference в title (near-dup `ghostmane`≈Ghostemane) или размазан title+artist (`Night`+`Lovell…`)
+11. Точный match артистов (не `Parcel` ≈ `Parcels` в поле artist)
 
 **Исключение:** Brian Eno «Music for Airports» — не фильтруется.
 
@@ -254,6 +255,7 @@ Situational golden (без имён) этим почти не бьётся — �
 | Только больше regex | Пул не растёт, топ уже хорош |
 | Rewrite user prompt как фикс качества | Отклонён как основной рычаг (см. выше) |
 | genre+mood / artist+mood в `expand`/`refine` | Убрано → mood-bait filter + artist/genre only (Q1) |
+| Голый `primary_genres` в search (`emo rap`) | Убран → genre-only reject; только artist / artist+genre |
 
 ---
 

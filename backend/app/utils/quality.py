@@ -1,6 +1,7 @@
 """Универсальная гигиена каталога — без привязки к жанру или промпту."""
 
 import re
+from difflib import SequenceMatcher
 
 from app.schemas.llm import MusicProfile
 from app.schemas.track import TrackCandidate
@@ -35,7 +36,39 @@ _SEO_TITLE_SUFFIX = re.compile(
     re.IGNORECASE,
 )
 _SEO_MUSIC_FOR = re.compile(r"\bmusic\s+for\b", re.IGNORECASE)
+# Production/SEO: type beats и похожие заглушки (любой жанр).
+_TYPE_BEAT = re.compile(
+    r"("
+    r"\btype\s*beats?\b|"
+    r"\binstrumental\s+type\b|"
+    r"\bbeats?\s+to\s+(cry|sleep|study|relax|drive)\b|"
+    r"\bfor\s+(losers|sleepers|studying|cooking)\s+to\b"
+    r")",
+    re.IGNORECASE,
+)
 
+# Слишком общие токены для ref-collision (не считать «уникальным» именем).
+_COMMON_REF_TOKENS = frozenset(
+    {
+        "night",
+        "lil",
+        "the",
+        "boy",
+        "boys",
+        "gang",
+        "young",
+        "big",
+        "money",
+        "black",
+        "white",
+        "love",
+        "baby",
+        "king",
+        "queen",
+        "dj",
+        "mc",
+    }
+)
 _SEO_ARTIST_STRUCTURAL = re.compile(
     r"("
     r"music\s*for\b|"
@@ -59,7 +92,7 @@ _SEO_LABEL_ARTIST = re.compile(
 )
 
 _TITLE_STOPWORDS = frozenset(
-    {"a", "an", "the", "of", "and", "la", "le", "de", "el", "y", "i", "to"}
+    {"a", "an", "the", "of", "and", "la", "le", "de", "el", "y", "i", "to", "for"}
 )
 
 _GENRE_TOKENS = frozenset(
@@ -109,6 +142,11 @@ _GENRE_TOKENS = frozenset(
         "garage",
         "grunge",
         "cinematic",
+        "emo",
+        "phonk",
+        "drill",
+        "beat",
+        "beats",
     }
 )
 
@@ -231,6 +269,17 @@ _GENRE_PREFIX_NOISE = frozenset(
         "fresh",
         "free",
     }
+)
+
+# Production / beat-store SEO (универсально, не жанр).
+_TYPE_BEAT = re.compile(
+    r"\b("
+    r"type\s*beats?|"
+    r"free\s*beats?|"
+    r"beat\s*tape|"
+    r"instrumental\s+type"
+    r")\b",
+    re.IGNORECASE,
 )
 
 _SEO_ARTIST_TOKENS = frozenset(
@@ -395,7 +444,22 @@ def is_genre_descriptor_title(title: str) -> bool:
     ):
         return True
 
+    # «Asterisk Gang Emo Rap», «… for losers to cry to» — 2+ жанра и мало своих слов.
+    if genre_count >= 2 and len(tokens) >= 3:
+        distinctive = [
+            token
+            for token in tokens
+            if token not in _DESCRIPTOR_TOKENS and token not in _GENRE_TOKENS
+        ]
+        if len(distinctive) <= 2:
+            return True
+
     return False
+
+
+def is_production_spam_title(title: str) -> bool:
+    """Beat-store / type beat SEO в названии (любой жанр)."""
+    return bool(_TYPE_BEAT.search(title))
 
 
 def looks_like_seo_artist(name: str) -> bool:
@@ -430,9 +494,11 @@ def looks_like_seo_title(title: str, artists: list[str]) -> bool:
 
 
 def is_functional_seo_track(track: TrackCandidate) -> bool:
-    """SEO-мусор каталога: functional «vibe for», genre-as-title, лейблы-заглушки."""
+    """SEO-мусор каталога: functional «vibe for», genre-as-title, type beat, лейблы."""
     haystack = f"{track.title} {track.version}".strip()
     if looks_like_seo_title(haystack, track.artists):
+        return True
+    if is_production_spam_title(haystack):
         return True
     if is_genre_descriptor_title(track.title):
         return True
@@ -446,6 +512,8 @@ def _title_resembles_reference(title: str, reference: str) -> bool:
         return True
     title_compact = _compact(title_lower)
     ref_compact = _compact(ref_lower)
+    if not title_compact or not ref_compact:
+        return False
     if title_compact == ref_compact:
         return True
     if ref_lower in title_lower or ref_compact in title_compact:
@@ -453,7 +521,39 @@ def _title_resembles_reference(title: str, reference: str) -> bool:
     # «Parcel» при якоре «Parcels» — keyword spam в title.
     if len(title_compact) >= 4 and title_compact in ref_compact:
         return len(title_compact) / len(ref_compact) >= 0.75
+    # Near-dup: «ghostmane» ≈ «Ghostemane» (опечатка / стилизация).
+    if min(len(title_compact), len(ref_compact)) >= 6:
+        ratio = SequenceMatcher(None, title_compact, ref_compact).ratio()
+        if ratio >= 0.88:
+            return True
     return False
+
+
+def _reference_split_across_title_artist(
+    track: TrackCandidate,
+    reference: str,
+) -> bool:
+    """
+    Мультисловный якорь размазан: часть в title, часть в artist
+    («Night» + «Vitu Lovell» ≈ Night Lovell), без точного match исполнителя.
+    """
+    ref_parts = [part for part in re.findall(r"[a-z0-9]+", reference.lower()) if len(part) >= 4]
+    if len(ref_parts) < 2:
+        return False
+    if any(artist_matches_reference(artist, reference) for artist in track.artists):
+        return False
+
+    title_tokens = set(_title_tokens(track.title))
+    artist_token_set: set[str] = set()
+    for name in track.artists:
+        artist_token_set.update(_tokenize_name(name))
+
+    in_title = [part for part in ref_parts if part in title_tokens]
+    in_artist = [part for part in ref_parts if part in artist_token_set]
+    if not in_title or not in_artist:
+        return False
+    # Нужны разные части якоря в title и artist.
+    return bool(set(in_title) - set(in_artist)) or bool(set(in_artist) - set(in_title))
 
 
 def is_mood_keyword_title(title: str) -> bool:
@@ -479,12 +579,14 @@ def is_mood_keyword_artist(name: str) -> bool:
 
 
 def _reference_in_title_only(track: TrackCandidate, profile: MusicProfile) -> bool:
-    """Имя reference artist в title, но не среди исполнителей."""
+    """Имя reference artist в title (или размазано title+artist), но не точный исполнитель."""
     if references_in_artists(track, profile):
         return False
 
     for ref in profile.reference_artists:
         if _title_resembles_reference(track.title, ref):
+            return True
+        if _reference_split_across_title_artist(track, ref):
             return True
 
     return False

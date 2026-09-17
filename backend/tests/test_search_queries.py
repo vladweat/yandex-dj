@@ -51,6 +51,36 @@ def test_is_mood_bait_search_query() -> None:
     assert not is_mood_bait_search_query("cloud rap underground")
 
 
+def test_is_genre_only_search_query() -> None:
+    from app.utils.search_queries import is_genre_only_search_query
+
+    assert is_genre_only_search_query("emo rap")
+    assert is_genre_only_search_query("indie pop")
+    assert is_genre_only_search_query("ambient")
+    assert is_genre_only_search_query("hip hop")
+    assert not is_genre_only_search_query("Bones")
+    assert not is_genre_only_search_query("Tycho ambient")
+    assert not is_genre_only_search_query("Parcels indie pop")
+    assert not is_genre_only_search_query("cloud rap underground")
+
+
+def test_refine_drops_genre_only_queries() -> None:
+    profile = MusicProfile(
+        playlist_title="Cloud",
+        playlist_description="Underground",
+        primary_genres=["hip hop", "trap", "emo rap"],
+        mood_tags=["sad"],
+        vocal_type="vocal_only",
+        reference_artists=["Bones", "$uicideboy$", "Night Lovell", "Lil Peep"],
+        search_queries=["Bones", "$uicideboy$", "emo rap"],
+        target_track_count=25,
+    )
+    refined = refine_search_queries(profile)
+    assert all(not is_rejected_search_query(q) for q in refined.search_queries)
+    assert not any(q.lower() == "emo rap" for q in refined.search_queries)
+    assert "Bones" in refined.search_queries
+
+
 def test_refine_search_queries_removes_generic_and_mood_bait() -> None:
     profile = MusicProfile(
         playlist_title="Sad Cloud",

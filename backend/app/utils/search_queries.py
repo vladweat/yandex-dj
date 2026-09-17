@@ -135,13 +135,28 @@ def is_mood_bait_search_query(query: str) -> bool:
     return False
 
 
+def is_genre_only_search_query(query: str) -> bool:
+    """
+    Чистый жанровый ярлык без артиста («emo rap», «indie pop», «ambient»).
+    В каталоге Яндекса тянет SEO/плейлист-мусор; артист+жанр — ок.
+    """
+    tokens = _query_tokens(query)
+    if not tokens:
+        return False
+    return all(token in _GENRE_BAIT_TOKENS for token in tokens)
+
+
 def is_rejected_search_query(query: str) -> bool:
     """Любая поисковая фраза, которую не стоит слать в каталог."""
-    return is_generic_search_query(query) or is_mood_bait_search_query(query)
+    return (
+        is_generic_search_query(query)
+        or is_mood_bait_search_query(query)
+        or is_genre_only_search_query(query)
+    )
 
 
 def refine_search_queries(profile: MusicProfile) -> MusicProfile:
-    """Убрать generic/mood-bait фразы, дополнить артистами и жанрами (без mood)."""
+    """Убрать generic/mood/genre-only фразы; опираться на артистов и artist+genre."""
     queries: list[str] = []
     seen: set[str] = set()
 
@@ -161,14 +176,12 @@ def refine_search_queries(profile: MusicProfile) -> MusicProfile:
     for artist in profile.reference_artists:
         add(artist)
 
-    for genre in profile.primary_genres:
-        add(genre)
-        if profile.vocal_type == "instrumental_only":
-            add(f"{genre} instrumental")
-
+    # Не добавляем голый primary_genres — is_genre_only. Только artist + genre.
     for artist in profile.reference_artists[:4]:
         for genre in profile.primary_genres[:2]:
             add(f"{artist} {genre}")
+            if profile.vocal_type == "instrumental_only":
+                add(f"{artist} {genre} instrumental")
 
     if len(queries) < 3:
         for artist in profile.reference_artists:
@@ -218,21 +231,15 @@ def expand_search_queries(
     if pass_num == 0:
         for artist in profile.reference_artists:
             add(artist)
-        for genre in profile.primary_genres:
-            add(genre)
-            if profile.vocal_type == "instrumental_only":
-                add(f"{genre} instrumental")
         for artist in profile.reference_artists[:4]:
             for genre in profile.primary_genres[:2]:
                 add(f"{artist} {genre}")
+                if profile.vocal_type == "instrumental_only":
+                    add(f"{artist} {genre} instrumental")
     else:
         for artist in profile.reference_artists:
             add(f"artists like {artist}")
             add(f"{artist} popular")
-        genres = profile.primary_genres
-        for index, genre in enumerate(genres):
-            for other in genres[index + 1 :]:
-                add(f"{genre} {other}")
         for artist in profile.reference_artists[:3]:
             for genre in profile.primary_genres[:2]:
                 add(f"{artist} {genre}")
