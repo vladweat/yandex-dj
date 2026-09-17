@@ -529,7 +529,7 @@ Like / dislike на результат генерации (свой id). Пов�
 |---|-----------|-------------------------------|--------------|
 | 1 | `users_playlists_create` | `(title, visibility="public")` | `profile.playlist_title` |
 | 2 | `tracks` | `(track_ids)` | resolve `album_id` для каждого ranked track |
-| 3 | `users_playlists_insert_track` | `(kind, track_id, album_id, at=i, revision=rev)` | по одному треку; `revision` из ответа предыдущей вставки |
+| 3 | `users_playlists_change` + `Difference.add_insert` | все треки одним diff | вместо N× `insert_track` (latency) |
 | 4 | `users_playlists_description` | `(kind, description)` | `{playlist_description}\n\nПромпт: …` |
 | — | URL (не SDK) | — | `https://music.yandex.ru/users/{login}/playlists/{kind}` |
 

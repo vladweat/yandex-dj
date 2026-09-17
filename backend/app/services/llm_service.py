@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import instructor
@@ -15,8 +16,10 @@ from app.services.llm_prompts import build_messages
 from app.utils.prompt_constraints import ensure_hard_reference_artists
 from app.utils.search_queries import refine_search_queries
 
-LLM_MAX_RETRIES = 2
-LLM_TIMEOUT_SEC = 60.0
+LLM_MAX_RETRIES = 1
+# Жёсткий потолок на LLM: SDK retries + instructor не должны съедать PIPELINE_TIMEOUT.
+LLM_TIMEOUT_SEC = 25.0
+LLM_HTTP_MAX_RETRIES = 1
 
 
 def enrich_search_queries(profile: MusicProfile) -> MusicProfile:
@@ -81,6 +84,7 @@ class LLMService:
             api_key=settings.openai_api_key.strip(),
             base_url=resolve_openai_base_url(),
             timeout=LLM_TIMEOUT_SEC,
+            max_retries=LLM_HTTP_MAX_RETRIES,
         )
         return instructor.from_openai(openai_client)
 
@@ -97,13 +101,20 @@ class LLMService:
 
         client = self._create_client()
         try:
-            profile = await client.chat.completions.create(
-                model=resolve_openai_model(),
-                response_model=MusicProfile,
-                messages=build_messages(text),
-                max_retries=LLM_MAX_RETRIES,
-                temperature=0.2,
+            profile = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=resolve_openai_model(),
+                    response_model=MusicProfile,
+                    messages=build_messages(text),
+                    max_retries=LLM_MAX_RETRIES,
+                    temperature=0.2,
+                ),
+                timeout=LLM_TIMEOUT_SEC,
             )
+        except TimeoutError as exc:
+            raise LLMError(
+                f"LLM timed out after {int(LLM_TIMEOUT_SEC)}s (provider unreachable or slow)"
+            ) from exc
         except LLMError:
             raise
         except Exception as exc:

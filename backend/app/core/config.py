@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     min_clean_candidates: int = 50
     similar_seeds_per_artist: int = 3
     max_similar_requests: int = 12
+    # Сколько reference_artists тянуть топами (остальные — только search/discovered).
+    reference_artists_tops_limit: int = 5
     # Не-якорные артисты из clean-пула → их топы + similar (ширина пула)
     discovered_artists_limit: int = 12
     discovered_similar_seeds: int = 8

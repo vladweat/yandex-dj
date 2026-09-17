@@ -218,7 +218,7 @@ class RetrievalService:
         seen_seeds = used_seed_ids if used_seed_ids is not None else set()
 
         seed_ids: list[str] = []
-        for ref in profile.reference_artists[:8]:
+        for ref in self._artists_for_tops(profile):
             added = 0
             for track in candidates:
                 if track.id in seen_seeds or track.id in seed_ids:
@@ -377,7 +377,7 @@ class RetrievalService:
         for query in profile.search_queries:
             tasks.append(self._yandex.search_tracks(client, query))
 
-        for artist_name in profile.reference_artists:
+        for artist_name in self._artists_for_tops(profile):
             tasks.append(self._fetch_artist_tracks(client, artist_name))
 
         if reference_track_id is not None:
@@ -385,6 +385,24 @@ class RetrievalService:
 
         raw_tracks = await _gather_tracks(tasks)
         return normalize_pool(tracks_to_candidates(raw_tracks))
+
+    @staticmethod
+    def _artists_for_tops(profile: MusicProfile) -> list[str]:
+        """Hard-якоря первыми, затем soft — не больше reference_artists_tops_limit."""
+        limit = max(1, settings.reference_artists_tops_limit)
+        hard = [name.strip() for name in profile.hard_reference_artists if name.strip()]
+        refs = [name.strip() for name in profile.reference_artists if name.strip()]
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for name in hard + refs:
+            key = name.lower()
+            if not name or key in seen:
+                continue
+            seen.add(key)
+            ordered.append(name)
+            if len(ordered) >= limit:
+                break
+        return ordered
 
     async def _gather_search_queries(
         self,

@@ -45,3 +45,26 @@ async def test_export_playlist_creates_and_populates() -> None:
     service.create_user_playlist.assert_awaited_once_with(client, "Night Drive")
     service.populate_playlist.assert_awaited_once_with(client, playlist, [("1", "10")])
     service.set_playlist_description.assert_awaited_once_with(client, 1003, "Dark synthwave")
+
+
+@pytest.mark.asyncio
+async def test_populate_playlist_uses_single_change_diff() -> None:
+    service = YandexMusicService()
+    client = MagicMock()
+    client.users_playlists_change = AsyncMock(return_value=MagicMock(kind=1, revision=2))
+    service._throttle = AsyncMock()
+    playlist = MagicMock(kind=42, revision=1)
+
+    await service.populate_playlist(
+        client,
+        playlist,
+        [("11", "100"), ("12", "200")],
+    )
+
+    client.users_playlists_change.assert_awaited_once()
+    args, kwargs = client.users_playlists_change.await_args
+    assert args[0] == 42
+    assert kwargs.get("revision") == 1
+    diff = args[1]
+    assert "11" in diff and "12" in diff
+    assert "100" in diff and "200" in diff
