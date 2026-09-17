@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import CurrentSession, get_retrieval_service
 from app.core.exceptions import RetrievalError, YandexMusicError
 from app.core.security import decrypt_token
+from app.core.timing import elapsed_ms_since
 from app.db.models.session import Session
 from app.schemas.retrieval import RetrievalRequest, RetrievalResponse
 from app.services.retrieval_service import RetrievalService
@@ -37,5 +38,5 @@ async def collect_candidates(
             detail=str(exc),
         ) from exc
 
-    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    elapsed_ms = elapsed_ms_since(started)
     return RetrievalResponse(count=len(tracks), elapsed_ms=elapsed_ms, tracks=tracks)

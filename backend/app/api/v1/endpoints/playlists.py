@@ -4,12 +4,12 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import CurrentSession, get_playlist_service
+from app.api.playlist_http import raise_playlist_generate_http, raise_playlist_generate_timeout
 from app.core.config import settings
 from app.core.exceptions import (
     ExportError,
     LLMError,
     NotFoundError,
-    PipelineTimeoutError,
     QuotaExceededError,
     RetrievalError,
     ScoringError,
@@ -108,51 +108,14 @@ async def generate_playlist(
             timeout=settings.pipeline_timeout_sec,
         )
     except TimeoutError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail=(
-                f"Playlist generation exceeded {settings.pipeline_timeout_sec}s "
-                f"(PIPELINE_TIMEOUT_SEC)"
-            ),
-        ) from PipelineTimeoutError(str(exc))
-    except QuotaExceededError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "message": str(exc),
-                "limit": exc.limit,
-                "used": exc.used,
-                "remaining": exc.remaining,
-                "resets_at": exc.resets_at,
-            },
-        ) from exc
-    except NotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
-    except LLMError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except YandexMusicError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
-    except ExportError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
-    except RetrievalError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except ScoringError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
+        raise_playlist_generate_timeout(exc)
+    except (
+        QuotaExceededError,
+        NotFoundError,
+        LLMError,
+        YandexMusicError,
+        ExportError,
+        RetrievalError,
+        ScoringError,
+    ) as exc:
+        raise_playlist_generate_http(exc)

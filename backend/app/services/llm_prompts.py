@@ -21,8 +21,8 @@ SYSTEM_PROMPT = """\
   study beats, workout playlist, music for, best tracks
 - reference_artists: 4–8 артистов-якорей для retrieval (подбираешь по вайбу, если пользователь
   не назвал имена)
-- hard_reference_artists: 1–3 артиста, которых пользователь ЯВНО назвал («Bones», «как $uicideboy$»).
-  Только подмножество reference_artists. Если имён нет — оставь [].
+- hard_reference_artists: 1–3 артиста, которых пользователь ЯВНО назвал
+  («Bones», «как $uicideboy$»). Только подмножество reference_artists. Если имён нет — оставь [].
 - playlist_title: 2–4 слова на языке запроса
 - playlist_description: 1–2 предложения об атмосфере
 - primary_genres / mood_tags: на английском

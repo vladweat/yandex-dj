@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from typing import Literal
 
 import numpy as np
 
 from app.core.config import settings
 from app.core.embedding import get_embedding_model
+from app.core.timing import elapsed_ms_since
 from app.schemas.llm import MusicProfile
 from app.schemas.scoring import ScoredTrack
 from app.schemas.track import TrackCandidate
@@ -216,4 +216,4 @@ class ScoringService:
 
     @staticmethod
     def elapsed_ms(started: float) -> int:
-        return int((time.perf_counter() - started) * 1000)
+        return elapsed_ms_since(started)
