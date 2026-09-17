@@ -225,3 +225,60 @@ def test_valid_real_underground_rap_track() -> None:
 def test_valid_bones_track() -> None:
     track = TrackCandidate(id="p10", title="Suffer", artists=["BONES", "xavier wulf"])
     assert is_spurious_track(track, _profile()) is False
+
+
+def test_spurious_type_beat_title() -> None:
+    track = TrackCandidate(
+        id="p11",
+        title="'M' Emo rap type beat",
+        artists=["鸣久"],
+    )
+    assert is_spurious_track(track, _profile()) is True
+
+
+def test_spurious_genre_stack_marketing_title() -> None:
+    track = TrackCandidate(
+        id="p12",
+        title="emo rap for losers to cry to",
+        artists=["plumbers incorporated"],
+    )
+    assert is_spurious_track(track, _profile()) is True
+
+
+def test_spurious_asterisk_genre_stack_title() -> None:
+    track = TrackCandidate(
+        id="p13",
+        title="Asterisk Gang Emo Rap",
+        artists=["Greenland Shark"],
+    )
+    assert is_spurious_track(track, _profile()) is True
+
+
+def test_spurious_single_genre_word_title() -> None:
+    track = TrackCandidate(id="p14", title="Emo", artists=["Mistah F.A.B."])
+    assert is_spurious_track(track, _profile()) is True
+
+
+def test_spurious_near_dup_reference_in_title() -> None:
+    profile = _profile().model_copy(
+        update={"reference_artists": ["Ghostemane", "Kavinsky", "Gunship", "FM-84"]}
+    )
+    track = TrackCandidate(id="p15", title="ghostmane", artists=["Haiyti"])
+    assert is_spurious_track(track, profile) is True
+
+
+def test_spurious_reference_split_title_artist() -> None:
+    profile = _profile().model_copy(
+        update={"reference_artists": ["Night Lovell", "Kavinsky", "Gunship", "FM-84"]}
+    )
+    track = TrackCandidate(id="p16", title="Night Ride", artists=["Lovell Lykaon"])
+    assert is_spurious_track(track, profile) is True
+
+
+def test_valid_real_artist_with_night_in_title() -> None:
+    """Обычный трек с Night в названии у реального не-якоря — ок."""
+    profile = _profile().model_copy(
+        update={"reference_artists": ["Kavinsky", "Gunship", "The Midnight", "FM-84"]}
+    )
+    track = TrackCandidate(id="p17", title="Nightcall", artists=["Kavinsky"])
+    assert is_spurious_track(track, profile) is False
