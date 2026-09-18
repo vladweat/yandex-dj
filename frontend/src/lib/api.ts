@@ -12,6 +12,7 @@ import type {
   PlaylistGenerateResponse,
   PlaylistHistoryResponse,
   PlaylistQuotaResponse,
+  PlaylistTrackEditRequest,
 } from "@/types/playlist";
 import type { YandexStatusResponse } from "@/types/yandex";
 import { getClientChannel } from "@/lib/client-channel";
@@ -215,6 +216,16 @@ export async function setPlaylistFeedback(
   body: PlaylistFeedbackRequest,
 ): Promise<PlaylistFeedbackResponse> {
   return apiFetch<PlaylistFeedbackResponse>(`/playlists/${id}/feedback`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function editPlaylistTrack(
+  id: string,
+  body: PlaylistTrackEditRequest,
+): Promise<PlaylistGenerateResponse> {
+  return apiFetch<PlaylistGenerateResponse>(`/playlists/${id}/tracks`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });

@@ -68,3 +68,57 @@ async def test_populate_playlist_uses_single_change_diff() -> None:
     diff = args[1]
     assert "11" in diff and "12" in diff
     assert "100" in diff and "200" in diff
+
+
+@pytest.mark.asyncio
+async def test_replace_playlist_contents_deletes_then_inserts() -> None:
+    service = YandexMusicService()
+    client = MagicMock()
+    client.users_playlists = AsyncMock(
+        return_value=MagicMock(
+            kind=42,
+            revision=3,
+            tracks=[MagicMock()],
+            track_count=25,
+        ),
+    )
+    client.users_playlists_change = AsyncMock(return_value=MagicMock(kind=42, revision=4))
+    service._throttle = AsyncMock()
+    service.resolve_track_refs = AsyncMock(return_value=[("11", "100")])
+
+    await service.replace_playlist_contents(client, 42, ["11"])
+
+    client.users_playlists_change.assert_awaited_once()
+    args, kwargs = client.users_playlists_change.await_args
+    assert args[0] == 42
+    assert kwargs.get("revision") == 3
+    diff = args[1]
+    if isinstance(diff, str):
+        import json
+
+        diff = json.loads(diff)
+    assert any(op.get("op") == "delete" for op in diff)
+    assert any(op.get("op") == "insert" for op in diff)
+    delete_ops = [op for op in diff if op.get("op") == "delete"]
+    assert delete_ops[0]["from"] == 0
+    assert delete_ops[0]["to"] == 24
+
+
+@pytest.mark.asyncio
+async def test_delete_playlist_track_at_single_delete() -> None:
+    service = YandexMusicService()
+    client = MagicMock()
+    client.users_playlists = AsyncMock(
+        return_value=MagicMock(kind=7, revision=2, track_count=10, tracks=[]),
+    )
+    client.users_playlists_change = AsyncMock(return_value=MagicMock(kind=7, revision=3))
+    service._throttle = AsyncMock()
+
+    await service.delete_playlist_track_at(client, 7, 3)
+
+    diff = client.users_playlists_change.await_args.args[1]
+    if isinstance(diff, str):
+        import json
+
+        diff = json.loads(diff)
+    assert diff == [{"op": "delete", "from": 3, "to": 3}]

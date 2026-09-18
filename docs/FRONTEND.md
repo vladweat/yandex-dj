@@ -122,5 +122,5 @@ make up-frontend   # http://localhost:3001
 | ~~P1.3~~ | Чекбокс «Учитывать мою библиотеку» |
 | ~~P1.4~~ | Онбординг + ожидание 7–20 сек |
 | ~~P1.5~~ | Soft-квоты + UX лимита |
-| P2.3–P2.5 | Шаринг с UTMs; replace track; мягкий latency copy |
+| ~~P2.3–P2.5~~ | Шаринг с UTMs; replace track; мягкий latency copy |
 | P1.1 | Telegram `/tg` — в коде; E2E ⏸ [TELEGRAM.md](TELEGRAM.md) |

@@ -68,7 +68,7 @@ class MusicProfile(BaseModel):
 | `playlist_description` | Описание плейлиста + ответ API |
 | `primary_genres` | Fallback-скоринг, обогащение паспорта трека |
 | `mood_tags` | Fallback-скоринг, системный контекст для embeddings |
-| `vocal_type` | Пост-фильтрация (backlog: audio VAD) |
+| `vocal_type` | Пост-фильтр «без слов» через `tracks_lyrics` (soft, только `instrumental_only`); NSFW — `explicit` в метаданных |
 | `reference_artists` | `artists_tracks()` — топ-10 на артиста |
 | `search_queries` | `client.search()` — параллельно |
 | `target_track_count` | Топ-N в Scoring, лимиты diversity |

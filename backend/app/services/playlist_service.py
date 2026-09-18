@@ -36,6 +36,7 @@ from app.schemas.playlist import (
     PlaylistPoolStats,
     PlaylistQuotaResponse,
     PlaylistTrackResponse,
+    TrackEditAction,
 )
 from app.schemas.scoring import ScoredTrack
 from app.services.cover_art_service import CoverArtService
@@ -47,6 +48,7 @@ from app.services.yandex_music_service import YandexMusicService
 from app.utils.playlist_filters import (
     apply_exclude_artists,
     filter_excluded_candidates,
+    filter_explicit_candidates,
     normalize_excludes,
 )
 from app.utils.prompt_constraints import (
@@ -55,6 +57,7 @@ from app.utils.prompt_constraints import (
     filter_excluded_languages,
 )
 from app.utils.quality import is_spurious_track
+from app.utils.tracks import tracks_to_candidates
 
 # Re-export для тестов и внешних импортов
 __all__ = [
@@ -249,6 +252,9 @@ class PlaylistService:
             warnings.append("diversity=high по промпту («разнообразн…»).")
         if "ru" in {item.casefold() for item in languages}:
             warnings.append("Исключены треки с кириллицей в названии/исполнителях.")
+        exclude_explicit = constraints.exclude_explicit
+        if exclude_explicit:
+            warnings.append("Исключены треки с пометкой explicit (E) по промпту.")
 
         llm_started = time.perf_counter()
         if source_id is not None:
@@ -323,27 +329,35 @@ class PlaylistService:
         candidates = filter_excluded_candidates(candidates, excludes)
         before_lang = len(candidates)
         candidates = filter_excluded_languages(candidates, languages)
+        if exclude_explicit:
+            candidates = filter_explicit_candidates(candidates)
         if before_lang and not candidates:
             raise RetrievalError("No candidates left after language filters")
         if not candidates:
             raise RetrievalError("No candidates found for the prompt")
         scoring_started = time.perf_counter()
+        from app.services.service_factory import get_track_cache
+
         try:
-            selected, candidates, method, shortfall = await score_with_feedback(
+            selected, candidates, method, shortfall, lyrics_warnings = await score_with_feedback(
                 profile,
                 candidates,
                 prompt=prompt,
                 access_token=access_token,
                 excludes=excludes,
                 exclude_languages=languages,
+                exclude_explicit=exclude_explicit,
                 diversity=diversity,
                 scoring=self._scoring,
                 retrieval=self._retrieval,
                 library_artists=library_artists,
+                yandex=self._yandex,
+                track_cache=get_track_cache(),
             )
         except Exception as exc:
             raise ScoringError(f"Scoring failed: {exc}") from exc
         scoring_ms = int((time.perf_counter() - scoring_started) * 1000)
+        warnings.extend(lyrics_warnings)
 
         if not selected:
             raise ScoringError("Scoring returned no tracks")
@@ -509,6 +523,102 @@ class PlaylistService:
         if row is None:
             raise NotFoundError("Playlist generation not found")
         return generation_to_response(row)
+
+    async def edit_track(
+        self,
+        generation_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        track_id: str,
+        action: TrackEditAction,
+        access_token: str,
+    ) -> PlaylistGenerateResponse:
+        row = await self._repo.get_by_id_for_user(generation_id, user_id)
+        if row is None:
+            raise NotFoundError("Playlist generation not found")
+
+        stored_tracks = [PlaylistTrackResponse.model_validate(item) for item in row.tracks]
+        index = next((i for i, track in enumerate(stored_tracks) if track.id == track_id), None)
+        if index is None:
+            raise NotFoundError("Track not found in playlist")
+
+        current_ids = {track.id for track in stored_tracks}
+        profile = MusicProfile.model_validate(row.profile)
+        options = _options_from_row(row.options)
+        excludes = normalize_excludes((options.exclude_artists if options else None) or [])
+
+        kind = row.yandex_kind or yandex_kind_from_url(row.playlist_url)
+        if kind is None:
+            raise ExportError("Playlist kind is missing")
+
+        client = await self._yandex.init_client(access_token)
+
+        if action == "remove":
+            if len(stored_tracks) <= 1:
+                raise ScoringError("Нельзя удалить последний трек в плейлисте")
+            try:
+                await self._yandex.delete_playlist_track_at(client, kind, index)
+            except YandexMusicError as exc:
+                raise ExportError(str(exc)) from exc
+            stored_tracks.pop(index)
+        else:
+            similar_raw = await self._yandex.tracks_similar_list(client, track_id)
+            candidates = tracks_to_candidates(similar_raw)
+            candidates = [
+                item
+                for item in candidates
+                if item.id not in current_ids and item.id != track_id
+            ]
+            candidates = filter_excluded_candidates(candidates, excludes)
+            if not candidates and profile.search_queries:
+                for query in profile.search_queries[:2]:
+                    found = await self._yandex.search_tracks(client, query, limit=15, pages=1)
+                    extra = tracks_to_candidates(found)
+                    for item in extra:
+                        if item.id not in current_ids and item.id != track_id:
+                            candidates.append(item)
+                    if candidates:
+                        break
+            if not candidates:
+                raise ScoringError("Не нашли замену для этого трека")
+            ranked, _method = await self._scoring.rank_pool(
+                profile,
+                candidates,
+                user_prompt=row.prompt,
+            )
+            replacement: ScoredTrack | None = None
+            for candidate, score in ranked:
+                if candidate.id in current_ids:
+                    continue
+                replacement = ScoredTrack.from_candidate(candidate, score)
+                break
+            if replacement is None:
+                raise ScoringError("Не нашли замену для этого трека")
+            try:
+                await self._yandex.replace_playlist_track_at(
+                    client,
+                    kind,
+                    index,
+                    replacement.id,
+                )
+            except YandexMusicError as exc:
+                raise ExportError(str(exc)) from exc
+            stored_tracks[index] = _track_response(replacement)
+
+        pool_stats = None
+        if row.pool_stats is not None:
+            pool_stats = PlaylistPoolStats.model_validate(row.pool_stats)
+            pool_stats = pool_stats.model_copy(update={"selected": len(stored_tracks)})
+
+        updated = await self._repo.update_tracks(
+            generation_id,
+            user_id,
+            tracks=[track.model_dump() for track in stored_tracks],
+            pool_stats=pool_stats.model_dump() if pool_stats else None,
+        )
+        if updated is None:
+            raise NotFoundError("Playlist generation not found")
+        return generation_to_response(updated)
 
     async def set_feedback(
         self,

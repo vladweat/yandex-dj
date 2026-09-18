@@ -2,7 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, Link2, Loader2, RefreshCw, ThumbsDown, ThumbsUp } from "lucide-react";
+import {
+  Copy,
+  ExternalLink,
+  Link2,
+  Loader2,
+  RefreshCw,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -11,13 +20,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { FadeIn } from "@/components/ui/fade-in";
 import { useAppRoutes } from "@/features/telegram/app-routes";
 import { PlaylistCover } from "@/features/playlist/playlist-cover";
-import { clearSessionId, generatePlaylist, setPlaylistFeedback } from "@/lib/api";
+import {
+  clearSessionId,
+  editPlaylistTrack,
+  generatePlaylist,
+  setPlaylistFeedback,
+} from "@/lib/api";
 import {
   classifyGenerateApiError,
+  formatPromptShareText,
   generationOptionsFromResult,
   promptDeepLink,
   pushGenerateWarnings,
+  REGEN_LATENCY_HINT,
 } from "@/features/playlist/playlist-form-utils";
+import type { TrackEditAction } from "@/types/playlist";
 import { usePlaylistStore } from "@/features/playlist/stores/playlist-store";
 import { useToastStore } from "@/stores/toast-store";
 import type { FeedbackValue } from "@/types/playlist";
@@ -52,6 +69,7 @@ export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
   const [copyDone, setCopyDone] = useState(false);
   const [shareDone, setShareDone] = useState(false);
   const [tracksOpen, setTracksOpen] = useState(false);
+  const [trackEditId, setTrackEditId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Reset collapsed track list when switching generations
@@ -81,14 +99,52 @@ export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
   }
 
   async function handleSharePrompt() {
-    const url = promptDeepLink(current.prompt, window.location.origin);
+    const url = promptDeepLink(current.prompt, window.location.origin, { utmSource: "result" });
+    const text = formatPromptShareText(current.prompt, url);
     try {
-      await navigator.clipboard.writeText(url);
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: "Prompt DJ", text: current.prompt.trim(), url });
+        setShareDone(true);
+        window.setTimeout(() => setShareDone(false), 2000);
+        return;
+      }
+      await navigator.clipboard.writeText(text);
       setShareDone(true);
-      pushToast("Ссылка на промпт скопирована", "info");
+      pushToast("Промпт и ссылка скопированы", "info");
       window.setTimeout(() => setShareDone(false), 2000);
-    } catch {
-      pushToast("Не удалось скопировать", "error");
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(text);
+        setShareDone(true);
+        pushToast("Промпт и ссылка скопированы", "info");
+        window.setTimeout(() => setShareDone(false), 2000);
+      } catch {
+        pushToast("Не удалось поделиться", "error");
+      }
+    }
+  }
+
+  async function handleTrackEdit(trackId: string, action: TrackEditAction) {
+    setTrackEditId(trackId);
+    try {
+      const response = await editPlaylistTrack(current.id, { track_id: trackId, action });
+      setResult(response);
+      pushToast(action === "remove" ? "Трек убран из плейлиста" : "Трек заменён", "info");
+      void queryClient.invalidateQueries({ queryKey: ["playlists", "history"] });
+    } catch (err) {
+      const apiErr = classifyGenerateApiError(err);
+      if (apiErr.kind === "unauthorized") {
+        clearSessionId();
+        pushToast("Сессия истекла — войдите снова", "error");
+        router.replace(loginPath);
+      } else if (apiErr.kind === "validation" || apiErr.kind === "message") {
+        pushToast(apiErr.message, "error");
+      } else {
+        pushToast("Не удалось обновить плейлист", "error");
+      }
+    } finally {
+      setTrackEditId(null);
     }
   }
 
@@ -236,7 +292,8 @@ export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
               type="button"
               variant="outline"
               onClick={handleAnotherVariant}
-              disabled={regenLoading}
+              disabled={regenLoading || trackEditId !== null}
+              title={REGEN_LATENCY_HINT}
             >
               {regenLoading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               Ещё вариант
@@ -294,6 +351,10 @@ export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
             </div>
           ) : null}
 
+          <p className={cn("text-[12px] text-muted-foreground/75", isFull && "text-xs text-slate-500")}>
+            {REGEN_LATENCY_HINT}
+          </p>
+
           {isFull ? (
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-sm">
               <p className="mb-2 font-medium text-slate-200">Музыкальный профиль</p>
@@ -332,6 +393,7 @@ export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
                     <th className="px-3 py-2 font-medium">Исполнитель</th>
                     <th className="px-3 py-2 font-medium">Длина</th>
                     <th className="px-3 py-2 font-medium">Score</th>
+                    <th className="px-3 py-2 font-medium"> </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -346,6 +408,40 @@ export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
                       <td className="px-3 py-2 tabular-nums text-slate-300">
                         {formatScore(track.similarity_score)}
                       </td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            aria-label="Заменить трек"
+                            disabled={trackEditId !== null || regenLoading}
+                            onClick={() => void handleTrackEdit(track.id, "replace")}
+                          >
+                            {trackEditId === track.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="size-4" />
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            aria-label="Убрать трек"
+                            disabled={
+                              trackEditId !== null ||
+                              regenLoading ||
+                              current.tracks.length <= 1
+                            }
+                            onClick={() => void handleTrackEdit(track.id, "remove")}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -356,11 +452,43 @@ export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
               {current.tracks.map((track, index) => (
                 <li
                   key={track.id}
-                  className="flex items-baseline gap-3 px-3 py-2 text-sm sm:px-4"
+                  className="flex items-center gap-2 px-3 py-2 text-sm sm:gap-3 sm:px-4"
                 >
                   <span className="w-5 shrink-0 tabular-nums text-slate-600">{index + 1}</span>
                   <span className="min-w-0 flex-1 truncate text-slate-200">{track.title}</span>
-                  <span className="max-w-[40%] truncate text-slate-500">{track.artist}</span>
+                  <span className="hidden max-w-[28%] truncate text-slate-500 sm:inline">
+                    {track.artist}
+                  </span>
+                  <div className="flex shrink-0 gap-0.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      aria-label="Заменить трек"
+                      disabled={trackEditId !== null || regenLoading}
+                      onClick={() => void handleTrackEdit(track.id, "replace")}
+                    >
+                      {trackEditId === track.id ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      aria-label="Убрать трек"
+                      disabled={
+                        trackEditId !== null || regenLoading || current.tracks.length <= 1
+                      }
+                      onClick={() => void handleTrackEdit(track.id, "remove")}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ol>

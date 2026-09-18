@@ -55,7 +55,7 @@ status = await client.account_status()
 | SDK | Назначение | Поля для пайплайна |
 |-----|------------|-------------------|
 | `tracks(track_ids)` | Дозагрузка missing | `duration_ms`, `albums[0].title`, `albums[0].genre`, `available` |
-| `tracks_lyrics(track_id)` | backlog | фильтрация по тексту |
+| `tracks_lyrics(track_id)` | `track_has_synced_lyrics` | soft filter «без слов» при `vocal_type=instrumental_only` (Redis cache) |
 
 Кэш: `TrackCacheService` (Redis), TTL `TRACK_CACHE_TTL_SEC` (86400).
 

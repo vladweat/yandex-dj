@@ -1,5 +1,6 @@
 export type DiversityMode = "normal" | "high";
 export type FeedbackValue = "like" | "dislike";
+export type TrackEditAction = "remove" | "replace";
 
 export interface MusicProfile {
   playlist_title: string;
@@ -24,6 +25,11 @@ export interface PlaylistGenerateRequest {
 
 export interface PlaylistFeedbackRequest {
   value: FeedbackValue | null;
+}
+
+export interface PlaylistTrackEditRequest {
+  track_id: string;
+  action: TrackEditAction;
 }
 
 export interface PlaylistFeedbackResponse {

@@ -44,9 +44,35 @@ export const GALLERY_PROMPTS: GalleryPrompt[] = [
   { title: "Вечер", prompt: "мягкий вечерний джаз для ужина вдвоём" },
 ];
 
-export function promptDeepLink(prompt: string, origin = ""): string {
-  const path = `/?prompt=${encodeURIComponent(prompt)}`;
+export type ShareLinkSource = "gallery" | "result" | "copy";
+
+const SHARE_UTM = {
+  medium: "prompt",
+  campaign: "prompt_dj",
+} as const;
+
+/** Ожидание latency для UX (P2.5); согласовано с PRODUCT guardrail ~7–12 сек. */
+export const GENERATION_LATENCY_HINT = "~12 сек";
+export const REGEN_LATENCY_HINT = "«Ещё вариант» — без LLM, обычно быстрее";
+
+export function promptDeepLink(
+  prompt: string,
+  origin = "",
+  options?: { utmSource?: ShareLinkSource },
+): string {
+  const params = new URLSearchParams();
+  params.set("prompt", prompt);
+  params.set("utm_source", options?.utmSource ?? "share");
+  params.set("utm_medium", SHARE_UTM.medium);
+  params.set("utm_campaign", SHARE_UTM.campaign);
+  const path = `/?${params.toString()}`;
   return origin ? `${origin}${path}` : path;
+}
+
+/** Текст для шаринга: промпт + deep link с UTMs (P2.3). */
+export function formatPromptShareText(prompt: string, url: string): string {
+  const trimmed = prompt.trim();
+  return trimmed ? `${trimmed}\n\n${url}` : url;
 }
 
 export function parseExcludeArtists(raw: string): string[] {

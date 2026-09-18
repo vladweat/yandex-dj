@@ -11,6 +11,7 @@ from app.schemas.track import TrackCandidate
 logger = logging.getLogger(__name__)
 
 _TRACK_KEY_PREFIX = "track:"
+_LYRICS_KEY_PREFIX = "lyrics:"
 
 
 class TrackCacheService:
@@ -64,3 +65,37 @@ class TrackCacheService:
                 await pipe.execute()
         except redis.RedisError as exc:
             logger.warning("Redis set_many failed: %s", exc)
+
+    async def get_lyrics_presence_many(self, track_ids: list[str]) -> dict[str, bool]:
+        if not track_ids:
+            return {}
+
+        client = await self._get_client()
+        keys = [f"{_LYRICS_KEY_PREFIX}{track_id}" for track_id in track_ids]
+        try:
+            values = await client.mget(keys)
+        except redis.RedisError as exc:
+            logger.warning("Redis lyrics mget failed: %s", exc)
+            return {}
+
+        cached: dict[str, bool] = {}
+        for track_id, raw in zip(track_ids, values, strict=True):
+            if raw is None:
+                continue
+            cached[track_id] = raw == "1"
+        return cached
+
+    async def set_lyrics_presence_many(self, presence: dict[str, bool]) -> None:
+        if not presence:
+            return
+
+        client = await self._get_client()
+        ttl = settings.track_cache_ttl_sec
+        try:
+            async with client.pipeline(transaction=False) as pipe:
+                for track_id, has_lyrics in presence.items():
+                    key = f"{_LYRICS_KEY_PREFIX}{track_id}"
+                    pipe.set(key, "1" if has_lyrics else "0", ex=ttl)
+                await pipe.execute()
+        except redis.RedisError as exc:
+            logger.warning("Redis lyrics set_many failed: %s", exc)

@@ -28,6 +28,18 @@ def normalize_excludes(names: list[str]) -> list[str]:
     return result
 
 
+def is_explicit_track(track: TrackCandidate | ScoredTrack) -> bool:
+    return track.explicit is True
+
+
+def filter_explicit_candidates(candidates: list[TrackCandidate]) -> list[TrackCandidate]:
+    return [track for track in candidates if not is_explicit_track(track)]
+
+
+def filter_explicit_scored(selected: list[ScoredTrack]) -> list[ScoredTrack]:
+    return [track for track in selected if not is_explicit_track(track)]
+
+
 def apply_exclude_artists(
     profile: MusicProfile,
     exclude_artists: list[str],
@@ -118,9 +130,13 @@ def apply_candidate_pool_filters(
     *,
     exclude_artists: list[str],
     exclude_languages: list[str],
+    exclude_explicit: bool = False,
 ) -> list[TrackCandidate]:
     filtered = filter_excluded_candidates(candidates, exclude_artists)
-    return filter_excluded_languages(filtered, exclude_languages)
+    filtered = filter_excluded_languages(filtered, exclude_languages)
+    if exclude_explicit:
+        filtered = filter_explicit_candidates(filtered)
+    return filtered
 
 
 def apply_selected_track_filters(
@@ -128,6 +144,10 @@ def apply_selected_track_filters(
     *,
     exclude_artists: list[str],
     exclude_languages: list[str],
+    exclude_explicit: bool = False,
 ) -> list[ScoredTrack]:
     filtered = filter_excluded_scored(selected, exclude_artists)
-    return filter_excluded_languages(filtered, exclude_languages)
+    filtered = filter_excluded_languages(filtered, exclude_languages)
+    if exclude_explicit:
+        filtered = filter_explicit_scored(filtered)
+    return filtered

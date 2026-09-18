@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 
 from yandex_music import ClientAsync, Track
+from yandex_music.exceptions import NotFoundError
 
 from app.core.config import settings
 from app.services.yandex.base import YandexApiBase
@@ -107,5 +108,22 @@ class YandexCatalogMixin(YandexApiBase):
             await self._throttle()
             tracks = await client.tracks(list(track_ids))
             return [track for track in tracks if track is not None]
+
+        return await self._call_with_retry(_fetch)
+
+    async def track_has_synced_lyrics(
+        self,
+        client: ClientAsync,
+        track_id: str | int,
+    ) -> bool:
+        """True — в каталоге есть synced lyrics; False — текста нет (NotFound)."""
+
+        async def _fetch() -> bool:
+            await self._throttle()
+            try:
+                lyrics = await client.tracks_lyrics(track_id)
+            except NotFoundError:
+                return False
+            return lyrics is not None
 
         return await self._call_with_retry(_fetch)

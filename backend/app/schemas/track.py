@@ -17,6 +17,7 @@ class TrackCandidate(BaseModel):
     version: str = ""
     duration_ms: int = 0
     available: bool = True
+    explicit: bool | None = None
     retrieval_tier: int = RETRIEVAL_TIER_SEARCH
 
     @property

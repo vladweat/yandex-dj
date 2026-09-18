@@ -14,6 +14,13 @@ logger = logging.getLogger(__name__)
 PLAYLIST_URL_TEMPLATE = "https://music.yandex.ru/users/{login}/playlists/{kind}"
 
 
+def _playlist_track_count(playlist: Playlist) -> int:
+    """Число треков в плейлисте (API часто отдаёт усечённый `tracks`, есть `track_count`)."""
+    if playlist.track_count is not None and playlist.track_count > 0:
+        return int(playlist.track_count)
+    return len(playlist.tracks or [])
+
+
 class YandexExportMixin(YandexApiBase):
     async def create_user_playlist(self, client: ClientAsync, title: str) -> Playlist:
         async def _create() -> Playlist:
@@ -99,6 +106,92 @@ class YandexExportMixin(YandexApiBase):
             return updated
 
         await self._call_with_retry(_change)
+
+    async def _apply_playlist_diff(
+        self,
+        client: ClientAsync,
+        kind: str | int,
+        diff: Difference,
+    ) -> None:
+        if not diff.operations:
+            return
+
+        async def _change() -> None:
+            await self._throttle()
+            playlist = await client.users_playlists(kind)
+            if playlist is None or playlist.revision is None:
+                raise YandexMusicError("Playlist not found")
+            updated = await client.users_playlists_change(
+                kind,
+                diff.to_json(),
+                revision=playlist.revision,
+            )
+            if updated is None:
+                raise YandexMusicError("Failed to update playlist tracks")
+
+        await self._call_with_retry(_change)
+
+    async def delete_playlist_track_at(
+        self,
+        client: ClientAsync,
+        kind: str | int,
+        at: int,
+    ) -> None:
+        """Удалить один трек по индексу (тот же порядок, что при export)."""
+        diff = Difference().add_delete(at, at)
+        await self._apply_playlist_diff(client, kind, diff)
+
+    async def replace_playlist_track_at(
+        self,
+        client: ClientAsync,
+        kind: str | int,
+        at: int,
+        track_id: str | int,
+    ) -> None:
+        refs = await self.resolve_track_refs(client, [track_id])
+        if not refs:
+            raise ExportError("No tracks available for export")
+        track_id_ref, album_id = refs[0]
+        diff = Difference().add_delete(at, at)
+        diff.add_insert(at, {"id": track_id_ref, "album_id": album_id})
+        await self._apply_playlist_diff(client, kind, diff)
+
+    async def replace_playlist_contents(
+        self,
+        client: ClientAsync,
+        kind: str | int,
+        track_ids: Sequence[str | int],
+    ) -> None:
+        """Полная замена треков в существующем плейлисте (P2.4)."""
+        track_refs = await self.resolve_track_refs(client, track_ids)
+        if track_ids and not track_refs:
+            raise ExportError("No tracks available for export")
+
+        async def _replace() -> None:
+            await self._throttle()
+            playlist = await client.users_playlists(kind)
+            if playlist is None or playlist.revision is None:
+                raise YandexMusicError("Playlist not found")
+            existing_count = _playlist_track_count(playlist)
+            diff = Difference()
+            if existing_count > 0:
+                diff.add_delete(0, existing_count - 1)
+            if track_refs:
+                tracks_payload = [
+                    {"id": track_id, "album_id": album_id} for track_id, album_id in track_refs
+                ]
+                diff.add_insert(at=0, tracks=tracks_payload)
+            if not diff.operations:
+                return
+            updated = await client.users_playlists_change(
+                kind,
+                diff.to_json(),
+                revision=playlist.revision,
+            )
+            if updated is None:
+                raise YandexMusicError("Failed to update playlist tracks")
+
+        await self._call_with_retry(_replace)
 
     @staticmethod
     def playlist_url(login: str, kind: str | int) -> str:

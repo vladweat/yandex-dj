@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 from app.api.deps import get_current_session, get_playlist_service
-from app.core.exceptions import NotFoundError, QuotaExceededError
+from app.core.exceptions import NotFoundError, QuotaExceededError, ScoringError
 from app.core.security import encrypt_token
 from app.db.models.session import Session
 from app.db.models.user import User
@@ -755,6 +755,160 @@ async def test_set_playlist_feedback_endpoint() -> None:
     assert mock_service.set_feedback.await_count == 2
     assert mock_service.set_feedback.await_args_list[0].kwargs["value"] == "like"
     assert mock_service.set_feedback.await_args_list[1].kwargs["value"] is None
+
+
+@pytest.mark.asyncio
+async def test_playlist_service_edit_track_replace() -> None:
+    row = _mock_saved_row()
+    row.yandex_kind = "1003"
+    row.tracks = [
+        {
+            "id": "1",
+            "title": "A",
+            "artist": "Artist A",
+            "duration_ms": 200000,
+            "similarity_score": 0.9,
+        },
+        {
+            "id": "2",
+            "title": "B",
+            "artist": "Artist B",
+            "duration_ms": 210000,
+            "similarity_score": 0.8,
+        },
+    ]
+    row.pool_stats = {"raw": 10, "clean": 8, "selected": 2}
+
+    from yandex_music import Track
+
+    replacement = TrackCandidate(id="99", title="New", artists=["Z"])
+    yandex = AsyncMock()
+    yandex.init_client.return_value = MagicMock()
+    yandex.tracks_similar_list.return_value = [Track(id=99, title="New", artists=[])]
+    yandex.search_tracks.return_value = []
+    yandex.replace_playlist_track_at = AsyncMock()
+
+    scoring = AsyncMock()
+    scoring.rank_pool.return_value = ([(replacement, 0.77)], "embedding")
+
+    updated = _mock_saved_row()
+    updated.tracks = [
+        row.tracks[0],
+        {
+            "id": "99",
+            "title": "New",
+            "artist": "Z",
+            "duration_ms": 0,
+            "similarity_score": 0.77,
+        },
+    ]
+    updated.pool_stats = {"raw": 10, "clean": 8, "selected": 2}
+
+    repo = AsyncMock()
+    repo.get_by_id_for_user.return_value = row
+    repo.update_tracks.return_value = updated
+
+    service = PlaylistService(
+        llm=AsyncMock(),
+        retrieval=AsyncMock(),
+        scoring=scoring,
+        yandex=yandex,
+        repo=repo,
+    )
+
+    result = await service.edit_track(
+        GENERATION_ID,
+        USER_ID,
+        track_id="2",
+        action="replace",
+        access_token="token",
+    )
+
+    yandex.replace_playlist_track_at.assert_awaited_once()
+    assert result.tracks[1].id == "99"
+    repo.update_tracks.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_playlist_service_edit_track_remove() -> None:
+    row = _mock_saved_row()
+    row.yandex_kind = "1003"
+    row.tracks = [
+        {
+            "id": "1",
+            "title": "A",
+            "artist": "Artist A",
+            "duration_ms": 200000,
+            "similarity_score": 0.9,
+        },
+        {
+            "id": "2",
+            "title": "B",
+            "artist": "Artist B",
+            "duration_ms": 210000,
+            "similarity_score": 0.8,
+        },
+    ]
+    row.pool_stats = {"raw": 10, "clean": 8, "selected": 2}
+
+    yandex = AsyncMock()
+    yandex.init_client.return_value = MagicMock()
+    yandex.delete_playlist_track_at = AsyncMock()
+
+    updated = _mock_saved_row()
+    updated.tracks = [row.tracks[0]]
+    updated.pool_stats = {"raw": 10, "clean": 8, "selected": 1}
+
+    repo = AsyncMock()
+    repo.get_by_id_for_user.return_value = row
+    repo.update_tracks.return_value = updated
+
+    service = PlaylistService(
+        llm=AsyncMock(),
+        retrieval=AsyncMock(),
+        scoring=AsyncMock(),
+        yandex=yandex,
+        repo=repo,
+    )
+
+    result = await service.edit_track(
+        GENERATION_ID,
+        USER_ID,
+        track_id="2",
+        action="remove",
+        access_token="token",
+    )
+
+    yandex.delete_playlist_track_at.assert_awaited_once()
+    call_args = yandex.delete_playlist_track_at.await_args
+    assert call_args.args[2] == 1
+    assert len(result.tracks) == 1
+    assert result.tracks[0].id == "1"
+
+
+@pytest.mark.asyncio
+async def test_playlist_service_edit_track_remove_last_blocked() -> None:
+    row = _mock_saved_row()
+    row.yandex_kind = "1003"
+    repo = AsyncMock()
+    repo.get_by_id_for_user.return_value = row
+
+    service = PlaylistService(
+        llm=AsyncMock(),
+        retrieval=AsyncMock(),
+        scoring=AsyncMock(),
+        yandex=AsyncMock(),
+        repo=repo,
+    )
+
+    with pytest.raises(ScoringError, match="последний"):
+        await service.edit_track(
+            GENERATION_ID,
+            USER_ID,
+            track_id="9442712",
+            action="remove",
+            access_token="token",
+        )
 
 
 @pytest.mark.asyncio

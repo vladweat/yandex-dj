@@ -14,6 +14,21 @@ _DIVERSITY_HINT = re.compile(
     re.IGNORECASE,
 )
 
+_EXCLUDE_EXPLICIT = re.compile(
+    r"("
+    r"без\s+мата|"
+    r"без\s+нецензур|"
+    r"без\s+explicit|"
+    r"для\s+дет|"
+    r"семейн|"
+    r"family[\s-]?friendly|"
+    r"no\s+explicit|"
+    r"clean\s+lyrics|"
+    r"sfw\b"
+    r")",
+    re.IGNORECASE,
+)
+
 _EXCLUDE_RU = re.compile(
     r"("
     r"исключ\w*\s+русск|"
@@ -32,6 +47,7 @@ _EXCLUDE_RU = re.compile(
 class PromptConstraints:
     prefer_high_diversity: bool = False
     exclude_languages: list[str] = field(default_factory=list)
+    exclude_explicit: bool = False
 
 
 def extract_prompt_constraints(prompt: str) -> PromptConstraints:
@@ -42,6 +58,7 @@ def extract_prompt_constraints(prompt: str) -> PromptConstraints:
     return PromptConstraints(
         prefer_high_diversity=bool(_DIVERSITY_HINT.search(text)),
         exclude_languages=exclude,
+        exclude_explicit=bool(_EXCLUDE_EXPLICIT.search(text)),
     )
 
 

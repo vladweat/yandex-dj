@@ -28,6 +28,12 @@ def test_extract_diversity_and_exclude_ru() -> None:
     )
     assert constraints.prefer_high_diversity is True
     assert constraints.exclude_languages == ["ru"]
+    assert constraints.exclude_explicit is False
+
+
+def test_extract_exclude_explicit_from_prompt() -> None:
+    constraints = extract_prompt_constraints("вечеринка без мата и нецензурщины")
+    assert constraints.exclude_explicit is True
 
 
 def test_extract_no_constraints_on_plain_prompt() -> None:
