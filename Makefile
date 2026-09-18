@@ -11,7 +11,7 @@ clean:
 venv: install
 
 build:
-	docker compose build api
+	docker compose build api bot
 
 up:
 	docker compose up -d

@@ -8,6 +8,8 @@ from app.schemas.auth import (
     DeviceFlowPollRequest,
     DeviceFlowPollResponse,
     DeviceFlowStartResponse,
+    TelegramLinkRequest,
+    TelegramLinkResponse,
 )
 from app.services.auth_service import AuthService
 
@@ -53,4 +55,20 @@ async def auth_me(session: Session = CurrentSession) -> AuthMeResponse:
         login=session.user.login,
         yandex_uid=session.user.yandex_uid,
         expires_at=session.expires_at,
+        telegram_user_id=session.user.telegram_user_id,
     )
+
+
+@router.post("/telegram/link", response_model=TelegramLinkResponse)
+async def link_telegram(
+    body: TelegramLinkRequest,
+    session: Session = CurrentSession,
+    service: AuthService = Depends(get_auth_service),
+) -> TelegramLinkResponse:
+    try:
+        return await service.link_telegram(session.user_id, body.init_data)
+    except AuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc

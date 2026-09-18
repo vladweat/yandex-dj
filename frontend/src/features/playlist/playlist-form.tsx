@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useAppRoutes } from "@/features/telegram/app-routes";
 import { clearSessionId, fetchPlaylistQuota, generatePlaylist } from "@/lib/api";
 import { usePlaylistStore } from "@/features/playlist/stores/playlist-store";
 import { useToastStore } from "@/stores/toast-store";
@@ -46,6 +47,7 @@ type PlaylistFormProps = {
 
 export function PlaylistForm({ variant = "simple", compact = false }: PlaylistFormProps) {
   const router = useRouter();
+  const { loginPath } = useAppRoutes();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const setResult = usePlaylistStore((state) => state.setResult);
@@ -159,7 +161,7 @@ export function PlaylistForm({ variant = "simple", compact = false }: PlaylistFo
       } else if (action.kind === "unauthorized") {
         clearSessionId();
         pushToast("Сессия истекла — войдите снова", "error");
-        router.replace("/login");
+        router.replace(loginPath);
       } else if (action.kind === "validation") {
         setValidationError(action.message);
       } else if (action.kind === "quota") {

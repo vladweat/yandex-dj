@@ -1,8 +1,9 @@
 import asyncio
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from app.api.client_channel import client_channel_from_request
 from app.api.deps import CurrentSession, get_playlist_service
 from app.api.playlist_http import raise_playlist_generate_http, raise_playlist_generate_timeout
 from app.core.config import settings
@@ -86,10 +87,12 @@ async def set_playlist_feedback(
 @router.post("/generate", response_model=PlaylistGenerateResponse)
 async def generate_playlist(
     body: PlaylistGenerateRequest,
+    request: Request,
     session: Session = CurrentSession,
     service: PlaylistService = Depends(get_playlist_service),
 ) -> PlaylistGenerateResponse:
     access_token = decrypt_token(session.encrypted_token)
+    client_channel = client_channel_from_request(request)
     try:
         return await asyncio.wait_for(
             service.generate(
@@ -104,6 +107,7 @@ async def generate_playlist(
                 diversity=body.diversity,
                 use_library=body.use_library,
                 source_id=body.source_id,
+                client_channel=client_channel,
             ),
             timeout=settings.pipeline_timeout_sec,
         )

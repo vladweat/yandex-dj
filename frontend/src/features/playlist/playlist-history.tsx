@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/card";
+import { useAppRoutes } from "@/features/telegram/app-routes";
 import { ApiRequestError, clearSessionId, getPlaylist, listPlaylists } from "@/lib/api";
 import { usePlaylistStore } from "@/features/playlist/stores/playlist-store";
 import { useToastStore } from "@/stores/toast-store";
@@ -40,6 +41,7 @@ export function PlaylistHistory({
   onSelect,
 }: PlaylistHistoryProps) {
   const router = useRouter();
+  const { loginPath } = useAppRoutes();
   const setResult = usePlaylistStore((state) => state.setResult);
   const setDraft = usePlaylistStore((state) => state.setDraft);
   const pushToast = useToastStore((state) => state.push);
@@ -54,7 +56,7 @@ export function PlaylistHistory({
 
   if (isError && error instanceof ApiRequestError && error.status === 401) {
     clearSessionId();
-    router.replace("/login");
+    router.replace(loginPath);
   }
 
   async function openItem(id: string) {

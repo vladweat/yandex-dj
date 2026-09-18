@@ -226,6 +226,7 @@ class PlaylistService:
         diversity: DiversityMode = "normal",
         use_library: bool = False,
         source_id: uuid.UUID | None = None,
+        client_channel: str = "web",
     ) -> PlaylistGenerateResponse:
         await self._ensure_quota_available(user_id, source_id=source_id)
         excludes = normalize_excludes(exclude_artists or [])
@@ -389,13 +390,14 @@ class PlaylistService:
             latency_breakdown=latency_breakdown,
             warnings=warnings or None,
             warnings_count=warnings_count,
+            client_channel=client_channel,
         )
 
         logger.info(
             "Playlist pipeline: llm=%dms retrieval=%dms scoring=%dms export=%dms "
             "total=%dms tracks=%d method=%s raw=%d clean=%d selected=%d track_count=%d "
             "full_n=%s warnings_count=%d diversity=%s use_library=%s "
-            "library_artists=%d source_id=%s id=%s",
+            "library_artists=%d source_id=%s client_channel=%s id=%s",
             llm_ms,
             retrieval_ms,
             scoring_ms,
@@ -413,6 +415,7 @@ class PlaylistService:
             use_library,
             len(library_artists),
             source_id,
+            client_channel,
             row.id,
         )
 

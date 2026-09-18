@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     # Shared secret for GET /metrics/product (empty = endpoint disabled)
     metrics_token: str = ""
 
+    tg_bot_token: str = ""
+    telegram_web_app_url: str = "http://localhost:3001/tg"
+    # False = бот без HTTPS_PROXY (если прокси не пускает api.telegram.org)
+    telegram_bot_use_proxy: bool = True
+
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
 

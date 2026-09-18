@@ -1,5 +1,6 @@
 """OAuth Device Flow."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,10 +8,11 @@ from yandex_music.exceptions import DeviceAuthError
 
 from app.core.config import settings
 from app.core.exceptions import AuthError
+from app.core.telegram_webapp import parse_telegram_user_id
 from app.core.security import encrypt_token
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.auth import DeviceFlowPollResponse, DeviceFlowStartResponse
+from app.schemas.auth import DeviceFlowPollResponse, DeviceFlowStartResponse, TelegramLinkResponse
 from app.services.yandex_music_service import YandexMusicService
 
 
@@ -76,3 +78,12 @@ class AuthService:
             status="authenticated",
             session_id=str(session.id),
         )
+
+    async def link_telegram(self, user_id: uuid.UUID, init_data: str) -> TelegramLinkResponse:
+        token = settings.tg_bot_token.strip()
+        if not token:
+            raise AuthError("Telegram bot is not configured")
+        telegram_user_id = parse_telegram_user_id(init_data, bot_token=token)
+        await self._user_repo.set_telegram_user_id(user_id, telegram_user_id)
+        await self._db.commit()
+        return TelegramLinkResponse(telegram_user_id=telegram_user_id)
