@@ -29,6 +29,6 @@ def test_parse_telegram_user_id_valid() -> None:
 
 
 def test_parse_telegram_user_id_bad_signature() -> None:
-    init_data = "auth_date=1&user=%7B%22id%22%3A1%7D&hash=deadbeef"
+    init_data = f"auth_date={int(time.time())}&user=%7B%22id%22%3A1%7D&hash=deadbeef"
     with pytest.raises(AuthError, match="signature"):
         parse_telegram_user_id(init_data, bot_token="token")

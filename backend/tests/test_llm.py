@@ -8,10 +8,12 @@ from app.core.config import Settings
 from app.core.exceptions import LLMError
 from app.core.llm_config import (
     DEFAULT_KODIK_BASE_URL,
+    DEFAULT_KODIK_IMAGE_MODEL,
     DEFAULT_KODIK_MODEL,
     DEFAULT_OPENAI_BASE_URL,
     DEFAULT_OPENAI_MODEL,
     resolve_openai_base_url,
+    resolve_openai_image_model,
     resolve_openai_model,
     uses_kodik,
 )
@@ -91,6 +93,11 @@ def test_resolve_openai_model_explicit_override() -> None:
 def test_resolve_openai_model_openai_default() -> None:
     cfg = Settings(openai_api_key="sk-openai-test", openai_base_url="", openai_model="")
     assert resolve_openai_model(cfg) == DEFAULT_OPENAI_MODEL
+
+
+def test_resolve_openai_image_model_kodik_default() -> None:
+    cfg = Settings(openai_base_url="https://api.kodikrouter.ru/v1")
+    assert resolve_openai_image_model(cfg) == DEFAULT_KODIK_IMAGE_MODEL
 
 
 def test_build_messages_contains_system_and_few_shots() -> None:

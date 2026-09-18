@@ -201,6 +201,15 @@ export async function getPlaylist(id: string): Promise<PlaylistGenerateResponse>
   return apiFetch<PlaylistGenerateResponse>(`/playlists/${id}`);
 }
 
+export async function fetchPlaylistCoverBlob(generationId: string): Promise<Blob | null> {
+  const response = await authorizedFetch(`/playlists/${generationId}/cover`);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new ApiRequestError(await parseError(response), response.status);
+  }
+  return response.blob();
+}
+
 export async function setPlaylistFeedback(
   id: string,
   body: PlaylistFeedbackRequest,

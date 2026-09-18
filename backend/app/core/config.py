@@ -76,6 +76,13 @@ class Settings(BaseSettings):
     # False = бот без HTTPS_PROXY (если прокси не пускает api.telegram.org)
     telegram_bot_use_proxy: bool = True
 
+    playlist_cover_enabled: bool = True
+    openai_image_model: str = ""
+    playlist_cover_aspect_ratio: str = "1:1"
+    playlist_cover_resolution: str = "1K"
+    playlist_cover_timeout_sec: float = 28.0
+    cover_storage_dir: str = "data/covers"
+
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
 

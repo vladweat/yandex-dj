@@ -119,13 +119,16 @@ class PlaylistGenerationRepository:
         pool_stats: dict[str, Any] | None,
         options: dict[str, Any],
         source_id: uuid.UUID | None = None,
+        id: uuid.UUID | None = None,
         latency_ms: int | None = None,
         latency_breakdown: dict[str, Any] | None = None,
         warnings: list[str] | None = None,
         warnings_count: int = 0,
         client_channel: str = "web",
+        cover_storage_key: str | None = None,
     ) -> PlaylistGeneration:
         row = PlaylistGeneration(
+            id=id or uuid.uuid4(),
             user_id=user_id,
             prompt=prompt,
             title=title,
@@ -142,6 +145,7 @@ class PlaylistGenerationRepository:
             warnings=warnings,
             warnings_count=warnings_count,
             client_channel=client_channel,
+            cover_storage_key=cover_storage_key,
         )
         self._db.add(row)
         await self._db.flush()

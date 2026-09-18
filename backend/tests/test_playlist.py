@@ -93,6 +93,7 @@ def _mock_saved_row(
     saved.latency_ms = latency_ms
     saved.feedback = feedback
     saved.feedback_at = None
+    saved.cover_storage_key = None
     return saved
 
 

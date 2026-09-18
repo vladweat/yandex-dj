@@ -1,6 +1,5 @@
 "use client";
 
-import WebApp from "@twa-dev/sdk";
 import { useEffect, useRef } from "react";
 
 import { useAuth } from "@/features/auth/auth-provider";
@@ -12,24 +11,38 @@ type TgShellProps = {
   children: React.ReactNode;
 };
 
+async function loadTelegramWebApp() {
+  const { default: WebApp } = await import("@twa-dev/sdk");
+  return WebApp;
+}
+
 export function TgShell({ children }: TgShellProps) {
   const { isAuthenticated } = useAuth();
   const linkedRef = useRef(false);
 
   useEffect(() => {
     setClientChannel("telegram");
-    WebApp.ready();
-    WebApp.expand();
-    return () => setClientChannel("web");
+    let cancelled = false;
+    void loadTelegramWebApp().then((WebApp) => {
+      if (cancelled) return;
+      WebApp.ready();
+      WebApp.expand();
+    });
+    return () => {
+      cancelled = true;
+      setClientChannel("web");
+    };
   }, []);
 
   useEffect(() => {
     if (!isAuthenticated || linkedRef.current) return;
-    const initData = WebApp.initData;
-    if (!initData) return;
-    linkedRef.current = true;
-    void linkTelegramAccount(initData).catch(() => {
-      linkedRef.current = false;
+    void loadTelegramWebApp().then((WebApp) => {
+      const initData = WebApp.initData;
+      if (!initData || linkedRef.current) return;
+      linkedRef.current = true;
+      void linkTelegramAccount(initData).catch(() => {
+        linkedRef.current = false;
+      });
     });
   }, [isAuthenticated]);
 

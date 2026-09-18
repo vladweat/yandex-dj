@@ -41,6 +41,7 @@ class PlaylistGeneration(Base):
     feedback: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     feedback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     client_channel: Mapped[str] = mapped_column(String(32), nullable=False, default="web")
+    cover_storage_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
