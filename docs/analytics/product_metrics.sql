@@ -84,6 +84,7 @@ GROUP BY 1
 ORDER BY cnt DESC;
 
 -- 8) Cost-per-generation (C5): LLM tokens + Yandex API calls
+-- Оценка в ₽: docs/UNIT_ECONOMICS.md (Kodik тарифы gpt-4o-mini + qwen 1K/2K)
 SELECT
   count(*) FILTER (WHERE generation_cost IS NOT NULL) AS with_cost,
   avg((generation_cost->'llm'->>'total_tokens')::float) AS avg_llm_total_tokens,
