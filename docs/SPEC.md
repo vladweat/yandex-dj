@@ -208,16 +208,16 @@
 **Закрыто (ядро):**
 - ✅ Этап 5.5: хвост (top-median gap, cap якорей 60%), latency (`rank_pool_merge`, `SCORING_EMBED_LIMIT=0`)
 - ✅ Этап 6: история, «ещё вариант», options, warnings, timeout/abort, CI, golden
-- ✅ Eng debt A/B/C1–C3 (C4 `quality.py` — при SEO-правке)
+- ✅ Eng debt A/B/C1–C5 (`generation_cost`, split `quality.py`)
+- ✅ Продукт P0–P2 (см. [PRODUCT.md](PRODUCT.md))
 
-**Сейчас (продукт) — [PRODUCT.md](PRODUCT.md):**
+**Открыто — [PRODUCT.md](PRODUCT.md):**
 
 | Приоритет | Фокус |
 |-----------|--------|
-| **P0** | Product metrics, like/dislike, regen-7d, расширенный golden |
-| **P1** | Telegram-бот; галерея промптов; персонализация likes/recent; квоты; онбординг |
-| **P2** | Lyrics «без слов»/NSFW; AI-обложка; replace track; шаринг |
-| **P3** | BPM, Celery, freemium — по триггеру |
+| **P1.1** | Telegram E2E (код ✅, [TELEGRAM.md](TELEGRAM.md)) |
+| **P3** | BPM, Celery, hard rate-limit Яндекс, freemium — по триггеру |
+| **C6** | E2E smoke Яндекс в CI (test-аккаунт) |
 
 **Не сейчас:** multi-catalog, org-mode, перепись UI, редакционный уровень, монетизация «Ещё вариант».
 

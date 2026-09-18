@@ -330,6 +330,16 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
   "warnings": [],
   "source_id": null,
   "latency_ms": 8716,
+  "generation_cost": {
+    "llm": {
+      "prompt_tokens": 1820,
+      "completion_tokens": 640,
+      "total_tokens": 2460,
+      "requests": 1
+    },
+    "yandex": { "api_calls": 38 },
+    "cover": { "image_requests": 1 }
+  },
   "feedback": null,
   "has_cover": true
 }
@@ -357,6 +367,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 | `warnings` | pipeline | напр. `exclude_artists` не сняты с якорей; сбой likes/recent при `use_library`; не блокирует `200`; persist в БД |
 | `source_id` | запрос / БД | `null` = новая генерация; иначе id родителя («Ещё вариант») |
 | `latency_ms` | pipeline | total ms пайплайна (persist) |
+| `generation_cost` | pipeline | C5: LLM tokens / `yandex.api_calls` / cover image requests (persist в `playlist_generations.generation_cost`) |
 | `feedback` | user | `"like"` \| `"dislike"` \| `null` |
 
 **Export (что происходит в Яндексе):**
@@ -365,7 +376,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 2. `users_playlists_insert_track(kind, track_id, album_id, at=i, revision=…)` — по одному, `revision` обновляется после каждой вставки
 3. `users_playlists_description(kind, description)` — описание из ответа API
 4. URL по `login` сессии и `kind` созданного плейлиста
-5. Persist в `playlist_generations` (история + product metrics: latency, warnings, pool_stats, source_id)
+5. Persist в `playlist_generations` (история + product metrics: latency, `generation_cost`, warnings, pool_stats, source_id)
 
 Подробности SDK: [YANDEX_MUSIC.md](YANDEX_MUSIC.md) § «Экспорт плейлиста».
 
@@ -374,7 +385,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 **Логи сервера (latency по этапам):**
 
 ```
-Playlist pipeline: llm=2140ms retrieval=3214ms scoring=1842ms export=1520ms total=8716ms tracks=25 method=embedding raw=180 clean=72 selected=25 track_count=25 full_n=True warnings_count=0 diversity=normal use_library=False library_artists=0 source_id=None id=…
+Playlist pipeline: llm=2140ms retrieval=3214ms scoring=1842ms export=1520ms total=8716ms tracks=25 method=embedding raw=180 clean=72 selected=25 track_count=25 full_n=True warnings_count=0 diversity=normal use_library=False library_artists=0 source_id=None client_channel=web llm_tokens=2460 yandex_calls=38 cover_requests=1 id=…
 ```
 
 `method`: `embedding` | `fallback`. Смотреть: `docker compose logs -f api` или `make logs`.
@@ -660,7 +671,12 @@ url = f"https://music.yandex.ru/users/{login}/playlists/{playlist.kind}"
   "with_feedback": 10,
   "regen_count": 12,
   "returning_users": 7,
-  "active_users": 20
+  "active_users": 20,
+  "generations_telegram": 3,
+  "generations_web": 39,
+  "with_cost": 42,
+  "avg_llm_total_tokens": 2380.5,
+  "avg_yandex_api_calls": 36.2
 }
 ```
 

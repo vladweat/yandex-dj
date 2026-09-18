@@ -6,6 +6,7 @@ from yandex_music import ClientAsync, DeviceCode, OAuthToken, Status
 
 from app.core.config import settings
 from app.core.exceptions import YandexMusicError
+from app.core.generation_usage import record_yandex_api_call
 from app.services.yandex.base import YandexApiBase
 
 
@@ -14,6 +15,7 @@ class YandexAuthMixin(YandexApiBase):
         client = self._create_client()
 
         async def _request() -> DeviceCode:
+            record_yandex_api_call()
             return await client.request_device_code()
 
         return await self._call_with_retry(_request)
@@ -22,6 +24,7 @@ class YandexAuthMixin(YandexApiBase):
         client = self._create_client()
 
         async def _poll() -> OAuthToken | None:
+            record_yandex_api_call()
             return await client.poll_device_token(device_code)
 
         return await self._call_with_retry(_poll)
@@ -42,6 +45,7 @@ class YandexAuthMixin(YandexApiBase):
         client = self._create_client(token)
 
         async def _init() -> ClientAsync:
+            record_yandex_api_call()
             await client.init()
             return client
 
@@ -52,6 +56,7 @@ class YandexAuthMixin(YandexApiBase):
             return client.me
 
         async def _status() -> Status:
+            record_yandex_api_call()
             status = await client.account_status()
             if status is None:
                 raise YandexMusicError("Failed to fetch account status")

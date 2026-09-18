@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.core.exceptions import CoverArtError
+from app.core.generation_usage import current_generation_usage
 from app.core.llm_config import (
     openai_is_configured,
     resolve_openai_base_url,
@@ -113,6 +114,9 @@ class CoverArtService:
             base_url=resolve_openai_base_url(),
         )
         try:
+            usage_acc = current_generation_usage()
+            if usage_acc is not None:
+                usage_acc.record_cover_image_request()
             response = await client.images.generate(
                 **image_generate_kwargs(model, prompt),
             )

@@ -154,10 +154,10 @@
 |------|--------|
 | Vendor lock Яндекс | API, auth, каталог, SEO-мусор, 429 |
 | Latency >15–20 сек | Ломает «магию» обещания |
-| Качество «на глаз» | Без like/skip — вслепую |
+| Качество «на глаз» | Like/dislike в UI; skip в Яндексе — если API даст |
 | LLM drift | Другие якоря → другой пул; golden узкий |
-| Нет discoverability | Нет organic loop без бота/галереи |
-| Нет экономики | Cost-per-playlist и квоты отсутствуют |
+| Нет discoverability | Галерея есть; полноценный loop без Telegram E2E |
+| Нет экономики | Cost-per-gen в метриках есть; монетизация / Pro — нет |
 
 ---
 

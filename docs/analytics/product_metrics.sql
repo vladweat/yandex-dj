@@ -82,3 +82,13 @@ FROM playlist_generations
 WHERE created_at >= now() - interval '7 days'
 GROUP BY 1
 ORDER BY cnt DESC;
+
+-- 8) Cost-per-generation (C5): LLM tokens + Yandex API calls
+SELECT
+  count(*) FILTER (WHERE generation_cost IS NOT NULL) AS with_cost,
+  avg((generation_cost->'llm'->>'total_tokens')::float) AS avg_llm_total_tokens,
+  avg((generation_cost->'yandex'->>'api_calls')::float) AS avg_yandex_api_calls,
+  avg((generation_cost->'cover'->>'image_requests')::float) AS avg_cover_image_requests
+FROM playlist_generations
+WHERE created_at >= now() - interval '7 days'
+  AND generation_cost IS NOT NULL;

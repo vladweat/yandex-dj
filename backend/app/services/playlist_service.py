@@ -22,8 +22,10 @@ from app.core.exceptions import (
     ScoringError,
     YandexMusicError,
 )
+from app.core.generation_usage import GenerationUsageAcc, generation_usage_scope
 from app.db.models.playlist_generation import PlaylistGeneration
 from app.repositories.playlist_generation_repository import PlaylistGenerationRepository
+from app.schemas.generation_cost import GenerationCost
 from app.schemas.llm import MusicProfile
 from app.schemas.playlist import (
     DiversityMode,
@@ -144,6 +146,7 @@ def generation_to_response(
         warnings=list(warnings if warnings is not None else stored_warnings),
         source_id=row.source_id,
         latency_ms=row.latency_ms,
+        generation_cost=GenerationCost.from_storage(row.generation_cost),
         feedback=_feedback_from_row(row.feedback),
         has_cover=bool(row.cover_storage_key),
     )
@@ -238,6 +241,40 @@ class PlaylistService:
         client_channel: str = "web",
     ) -> PlaylistGenerateResponse:
         await self._ensure_quota_available(user_id, source_id=source_id)
+        with generation_usage_scope() as usage_acc:
+            return await self._generate_playlist(
+                usage_acc=usage_acc,
+                prompt=prompt,
+                track_count=track_count,
+                instrumental_only=instrumental_only,
+                access_token=access_token,
+                login=login,
+                user_id=user_id,
+                exclude_artists=exclude_artists,
+                exclude_languages=exclude_languages,
+                diversity=diversity,
+                use_library=use_library,
+                source_id=source_id,
+                client_channel=client_channel,
+            )
+
+    async def _generate_playlist(
+        self,
+        *,
+        usage_acc: GenerationUsageAcc,
+        prompt: str,
+        track_count: int,
+        instrumental_only: bool,
+        access_token: str,
+        login: str,
+        user_id: uuid.UUID,
+        exclude_artists: list[str] | None = None,
+        exclude_languages: list[str] | None = None,
+        diversity: DiversityMode = "normal",
+        use_library: bool = False,
+        source_id: uuid.UUID | None = None,
+        client_channel: str = "web",
+    ) -> PlaylistGenerateResponse:
         excludes = normalize_excludes(exclude_artists or [])
         pipeline_started = time.perf_counter()
         warnings: list[str] = []
@@ -423,6 +460,7 @@ class PlaylistService:
         }
         warnings_count = len(warnings)
         full_n = pool_stats.selected == track_count
+        generation_cost = usage_acc.to_storage()
         row = await self._repo.create(
             id=generation_id,
             user_id=user_id,
@@ -438,17 +476,20 @@ class PlaylistService:
             source_id=source_id,
             latency_ms=total_ms,
             latency_breakdown=latency_breakdown,
+            generation_cost=generation_cost,
             warnings=warnings or None,
             warnings_count=warnings_count,
             client_channel=client_channel,
             cover_storage_key=cover_storage_key,
         )
 
+        cost_llm = generation_cost["llm"]
         logger.info(
             "Playlist pipeline: llm=%dms retrieval=%dms scoring=%dms export=%dms "
             "total=%dms tracks=%d method=%s raw=%d clean=%d selected=%d track_count=%d "
             "full_n=%s warnings_count=%d diversity=%s use_library=%s "
-            "library_artists=%d source_id=%s client_channel=%s id=%s",
+            "library_artists=%d source_id=%s client_channel=%s "
+            "llm_tokens=%d yandex_calls=%d cover_requests=%d id=%s",
             llm_ms,
             retrieval_ms,
             scoring_ms,
@@ -467,6 +508,9 @@ class PlaylistService:
             len(library_artists),
             source_id,
             client_channel,
+            cost_llm["total_tokens"],
+            generation_cost["yandex"]["api_calls"],
+            generation_cost["cover"]["image_requests"],
             row.id,
         )
 

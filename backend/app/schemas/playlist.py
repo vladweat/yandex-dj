@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.generation_cost import GenerationCost
 from app.schemas.llm import MusicProfile
 
 DiversityMode = Literal["normal", "high"]
@@ -67,6 +68,7 @@ class PlaylistGenerateResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     source_id: uuid.UUID | None = None
     latency_ms: int | None = None
+    generation_cost: GenerationCost | None = None
     feedback: FeedbackValue | None = None
     has_cover: bool = False
 

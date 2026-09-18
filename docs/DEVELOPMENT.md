@@ -16,10 +16,10 @@
 | Качество плейлистов | ✅ этап 5.5: P0/P1/P2 — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) |
 | Продукт (этап 6) | ✅ история / реген / profile / опции / UX / CI |
 | CI | ✅ `.github/workflows/ci.yml` — ruff + pytest + tsc/vitest |
-| Техдолг A/B/C | ✅ C4 split `utils/quality/` |
-| **Следующий фокус** | [PRODUCT.md](PRODUCT.md): **P0 metrics** → P1 бот / listening graph |
+| Техдолг A/B/C1–C5 | ✅ (C6 — опциональный Яндекс E2E в CI) |
+| **Следующий фокус** | [PRODUCT.md](PRODUCT.md): **P1.1 Telegram E2E**; P3 по триггеру |
 
-**MVP, этап 5.5 и этап 6 закрыты.** Ядро не трогать без регресса golden. Фокус: **product metrics → канал → персонализация Яндекса**.
+**MVP, этап 5.5, этап 6 и продуктовый P0–P2 закрыты.** Ядро не трогать без регресса golden. Фокус: **канал (бот) → P3 по метрикам**.
 
 ---
 
@@ -283,7 +283,7 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 
 ## Техдолг
 
-Актуально на 2026-09-17. Качество/latency + бэклог Q1–Q5 — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md). Продукт — [PRODUCT.md](PRODUCT.md).
+Актуально на 2026-09-18. Качество/latency + Q1–Q8 — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md). Продукт — [PRODUCT.md](PRODUCT.md).
 
 ### Приоритет A — качество и latency (этап 5.5) ✅
 
@@ -311,10 +311,10 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 | C2 | ~~Дубль discovered vs feedback expand~~ | `retrieval_service` | ✅ `_expand_by_artist_names` |
 | C3 | ~~Дубль generate error handling~~ | form / result / utils | ✅ |
 | C4 | ~~Размер `quality.py`~~ | `utils/quality/` | ✅ сплит |
-| C5 | Cost-per-playlist (LLM tokens + # Yandex calls) | logs / metrics | Вместе с PRODUCT P0.1 / P1.5 |
+| C5 | ~~Cost-per-playlist (LLM tokens + # Yandex calls)~~ | `generation_cost` JSONB + лог + `GET /metrics/product` | ✅ 2026-09-18 |
 | C6 | E2E smoke vs staging Яндекс в CI | optional | Когда будет test-аккаунт |
 
-**Порядок:** PRODUCT P0–P1; C4/C5 по касательной.
+**Порядок:** P1.1 Telegram E2E; C6 по необходимости.
 
 ---
 

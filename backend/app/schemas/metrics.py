@@ -23,3 +23,6 @@ class ProductMetricsResponse(BaseModel):
     active_users: int = 0
     generations_telegram: int = 0
     generations_web: int = 0
+    with_cost: int = 0
+    avg_llm_total_tokens: float | None = None
+    avg_yandex_api_calls: float | None = None

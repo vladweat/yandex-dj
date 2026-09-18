@@ -91,7 +91,17 @@ class PlaylistGenerationRepository:
                   (SELECT count(*) FILTER (WHERE client_channel = 'telegram')
                      FROM windowed)::int AS generations_telegram,
                   (SELECT count(*) FILTER (WHERE client_channel = 'web')
-                     FROM windowed)::int AS generations_web
+                     FROM windowed)::int AS generations_web,
+                  (SELECT count(*) FILTER (WHERE generation_cost IS NOT NULL)
+                     FROM windowed)::int AS with_cost,
+                  (SELECT avg((generation_cost->'llm'->>'total_tokens')::float)
+                     FROM windowed
+                     WHERE generation_cost IS NOT NULL
+                       AND generation_cost->'llm' ? 'total_tokens') AS avg_llm_total_tokens,
+                  (SELECT avg((generation_cost->'yandex'->>'api_calls')::float)
+                     FROM windowed
+                     WHERE generation_cost IS NOT NULL
+                       AND generation_cost->'yandex' ? 'api_calls') AS avg_yandex_api_calls
                 """
             ),
             {"since": since},
@@ -122,6 +132,7 @@ class PlaylistGenerationRepository:
         id: uuid.UUID | None = None,
         latency_ms: int | None = None,
         latency_breakdown: dict[str, Any] | None = None,
+        generation_cost: dict[str, Any] | None = None,
         warnings: list[str] | None = None,
         warnings_count: int = 0,
         client_channel: str = "web",
@@ -142,6 +153,7 @@ class PlaylistGenerationRepository:
             source_id=source_id,
             latency_ms=latency_ms,
             latency_breakdown=latency_breakdown,
+            generation_cost=generation_cost,
             warnings=warnings,
             warnings_count=warnings_count,
             client_channel=client_channel,

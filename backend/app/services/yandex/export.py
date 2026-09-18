@@ -7,6 +7,7 @@ from yandex_music import ClientAsync, Playlist
 from yandex_music.utils.difference import Difference
 
 from app.core.exceptions import ExportError, YandexMusicError
+from app.core.generation_usage import record_yandex_api_call
 from app.services.yandex.base import YandexApiBase
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,7 @@ class YandexExportMixin(YandexApiBase):
             playlist = await client.users_playlists(kind)
             if playlist is None or playlist.revision is None:
                 raise YandexMusicError("Playlist not found")
+            record_yandex_api_call()
             updated = await client.users_playlists_change(
                 kind,
                 diff.to_json(),
@@ -183,6 +185,7 @@ class YandexExportMixin(YandexApiBase):
                 diff.add_insert(at=0, tracks=tracks_payload)
             if not diff.operations:
                 return
+            record_yandex_api_call()
             updated = await client.users_playlists_change(
                 kind,
                 diff.to_json(),

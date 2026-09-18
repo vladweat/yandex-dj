@@ -230,6 +230,7 @@ async def test_playlist_service_generate_pipeline() -> None:
     create_kwargs = repo.create.await_args.kwargs
     assert create_kwargs["latency_ms"] is not None
     assert create_kwargs["latency_breakdown"]["llm"] >= 0
+    assert create_kwargs["generation_cost"]["yandex"]["api_calls"] >= 0
     assert create_kwargs["warnings_count"] == 0
     assert create_kwargs["options"]["diversity"] == "high"
 
