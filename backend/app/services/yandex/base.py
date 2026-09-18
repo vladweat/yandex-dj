@@ -11,6 +11,7 @@ from yandex_music.utils.request_async import Request
 
 from app.core.config import settings
 from app.core.exceptions import YandexMusicError
+from app.core.generation_usage import record_yandex_api_call
 from app.core.proxy import get_outbound_proxy_url
 
 T = TypeVar("T")
@@ -44,4 +45,5 @@ class YandexApiBase:
         raise YandexMusicError(f"{last_exc}{hint}") from last_exc
 
     async def _throttle(self) -> None:
+        record_yandex_api_call()
         await asyncio.sleep(settings.yandex.rate_limit_delay_sec)

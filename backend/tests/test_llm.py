@@ -145,7 +145,9 @@ async def test_parse_prompt_raises_without_api_key() -> None:
 @pytest.mark.parametrize("prompt", DIVERSE_PROMPTS)
 async def test_parse_prompt_diverse_prompts(prompt: str) -> None:
     mock_client = MagicMock()
-    mock_client.chat.completions.create = AsyncMock(return_value=SAMPLE_PROFILE)
+    mock_client.chat.completions.create_with_completion = AsyncMock(
+        return_value=(SAMPLE_PROFILE, type("Usage", (), {"usage": None})()),
+    )
     service = LLMService(client=mock_client)
 
     profile = await service.parse_prompt(prompt)
@@ -153,14 +155,16 @@ async def test_parse_prompt_diverse_prompts(prompt: str) -> None:
     assert isinstance(profile, MusicProfile)
     assert len(profile.reference_artists) >= 4
     assert len(profile.search_queries) >= 3
-    call_kwargs = mock_client.chat.completions.create.await_args.kwargs
+    call_kwargs = mock_client.chat.completions.create_with_completion.await_args.kwargs
     assert call_kwargs["messages"][-1]["content"] == prompt.strip()
 
 
 @pytest.mark.asyncio
 async def test_parse_prompt_wraps_upstream_errors() -> None:
     mock_client = MagicMock()
-    mock_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("upstream down"))
+    mock_client.chat.completions.create_with_completion = AsyncMock(
+        side_effect=RuntimeError("upstream down"),
+    )
     service = LLMService(client=mock_client)
 
     with pytest.raises(LLMError, match="LLM request failed"):

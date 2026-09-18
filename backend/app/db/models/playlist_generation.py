@@ -36,6 +36,7 @@ class PlaylistGeneration(Base):
     )
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     latency_breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    generation_cost: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     warnings: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
     warnings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     feedback: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)

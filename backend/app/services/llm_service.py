@@ -10,6 +10,7 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.core.exceptions import LLMError
+from app.core.generation_usage import current_generation_usage, token_usage_from_completion
 from app.core.llm_config import openai_is_configured, resolve_openai_base_url, resolve_openai_model
 from app.schemas.llm import MusicProfile
 from app.services.llm_prompts import build_messages
@@ -102,8 +103,8 @@ class LLMService:
 
         client = self._create_client()
         try:
-            profile = await asyncio.wait_for(
-                client.chat.completions.create(
+            profile, completion = await asyncio.wait_for(
+                client.chat.completions.create_with_completion(
                     model=resolve_openai_model(),
                     response_model=MusicProfile,
                     messages=build_messages(text),
@@ -112,6 +113,13 @@ class LLMService:
                 ),
                 timeout=LLM_TIMEOUT_SEC,
             )
+            usage_acc = current_generation_usage()
+            if usage_acc is not None:
+                prompt_tokens, completion_tokens = token_usage_from_completion(completion)
+                usage_acc.add_llm_usage(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
         except TimeoutError as exc:
             raise LLMError(
                 f"LLM timed out after {int(LLM_TIMEOUT_SEC)}s (provider unreachable or slow)"
