@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from app.api.client_channel import client_channel_from_request
 from app.api.deps import CurrentSession, get_playlist_service
@@ -47,6 +47,22 @@ async def get_playlist_quota(
     service: PlaylistService = Depends(get_playlist_service),
 ) -> PlaylistQuotaResponse:
     return await service.get_quota(session.user_id)
+
+
+@router.get("/{generation_id}/cover")
+async def get_playlist_cover(
+    generation_id: uuid.UUID,
+    session: Session = CurrentSession,
+    service: PlaylistService = Depends(get_playlist_service),
+) -> Response:
+    payload = await service.get_cover_bytes(generation_id, session.user_id)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cover not found",
+        )
+    data, media_type = payload
+    return Response(content=data, media_type=media_type, headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.get("/{generation_id}", response_model=PlaylistGenerateResponse)

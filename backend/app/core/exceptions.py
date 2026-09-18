@@ -38,6 +38,10 @@ class PipelineTimeoutError(AppError):
     """Пайплайн генерации превысил PIPELINE_TIMEOUT_SEC."""
 
 
+class CoverArtError(AppError):
+    """Ошибки генерации AI-обложки."""
+
+
 class QuotaExceededError(AppError):
     """Превышена soft-квота генераций за сутки."""
 

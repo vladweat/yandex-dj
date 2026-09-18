@@ -330,9 +330,14 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
   "warnings": [],
   "source_id": null,
   "latency_ms": 8716,
-  "feedback": null
+  "feedback": null,
+  "has_cover": true
 }
 ```
+
+| `has_cover` | cover art | `true`, если PNG сохранён; картинка — `GET /playlists/{id}/cover` |
+
+**Cover art (P2.2):** параллельно retrieval/scoring/export — KodikRouter `POST /v1/images/generations`, модель **`qwen/qwen-image-3-pro`** (1:1, 1K по умолчанию); PNG в `COVER_STORAGE_DIR`; не блокирует `200`, если таймаут — warning.
 
 **Семантика полей ответа:**
 
@@ -457,6 +462,14 @@ Soft-квота новых генераций за текущие UTC-сутки
 Полная запись генерации (тот же контракт, что ответ `POST /generate`). Warnings читаются из БД.
 
 **Ошибки:** `401`, `404` (чужой или несуществующий id).
+
+### `GET /api/v1/playlists/{id}/cover`
+
+AI-обложка (PNG) для шаринга в UI. Не загружается в Яндекс — только Prompt DJ.
+
+**Headers:** `Authorization: Bearer <session_id>`.
+
+**Ответ `200`:** `Content-Type: image/png`, тело — бинарный PNG. **`404`:** обложки нет (`has_cover: false`) или чужой id.
 
 ### `PATCH /api/v1/playlists/{id}/feedback`
 

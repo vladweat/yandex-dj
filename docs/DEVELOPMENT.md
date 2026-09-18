@@ -258,7 +258,7 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 ### P2 — pain и polish
 
 - [ ] **P2.1** Lyrics: «без слов» / NSFW
-- [ ] **P2.2** AI-обложка
+- [x] **P2.2** AI-обложка
 - [ ] **P2.3** Шаринг промпт+ссылка с UTMs
 - [ ] **P2.4** Выкинуть / заменить трек без полной реген
 - [ ] **P2.5** Мягкий показ latency («Ещё вариант — без LLM»)

@@ -68,6 +68,7 @@ export interface PlaylistGenerateResponse {
   source_id?: string | null;
   latency_ms?: number | null;
   feedback?: FeedbackValue | null;
+  has_cover?: boolean;
 }
 
 export interface PlaylistHistoryItem {

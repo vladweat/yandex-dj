@@ -37,6 +37,7 @@ services:
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
       - ./backend/.auth:/app/.auth
+      - ./backend/data/covers:/app/data/covers
     depends_on:
       db:
         condition: service_healthy

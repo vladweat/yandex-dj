@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
@@ -12,6 +13,7 @@ from yandex_music import ClientAsync
 
 from app.core.config import settings
 from app.core.exceptions import (
+    CoverArtError,
     ExportError,
     LLMError,
     NotFoundError,
@@ -36,6 +38,7 @@ from app.schemas.playlist import (
     PlaylistTrackResponse,
 )
 from app.schemas.scoring import ScoredTrack
+from app.services.cover_art_service import CoverArtService
 from app.services.llm_service import LLMService
 from app.services.playlist_scoring import score_with_feedback
 from app.services.retrieval_service import RetrievalService
@@ -139,6 +142,7 @@ def generation_to_response(
         source_id=row.source_id,
         latency_ms=row.latency_ms,
         feedback=_feedback_from_row(row.feedback),
+        has_cover=bool(row.cover_storage_key),
     )
 
 
@@ -150,12 +154,14 @@ class PlaylistService:
         scoring: ScoringService,
         yandex: YandexMusicService,
         repo: PlaylistGenerationRepository,
+        cover: CoverArtService | None = None,
     ) -> None:
         self._llm = llm
         self._retrieval = retrieval
         self._scoring = scoring
         self._yandex = yandex
         self._repo = repo
+        self._cover = cover or CoverArtService()
 
     @staticmethod
     def _utc_day_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
@@ -271,6 +277,14 @@ class PlaylistService:
         # После exclude якорей — пересчитать hard, если опустели.
         profile = ensure_hard_reference_artists(profile, prompt)
         library_artists: list[str] = []
+
+        generation_id = uuid.uuid4()
+        cover_task: asyncio.Task[str] | None = None
+        if self._cover.is_enabled():
+            cover_task = asyncio.create_task(
+                self._cover.generate(generation_id, profile, prompt),
+            )
+
         if use_library:
             try:
                 library_artists = await self._yandex.fetch_library_artist_names(
@@ -356,6 +370,26 @@ class PlaylistService:
             raise ExportError(str(exc)) from exc
         export_ms = int((time.perf_counter() - export_started) * 1000)
 
+        cover_storage_key: str | None = None
+        cover_ms = 0
+        if cover_task is not None:
+            cover_started = time.perf_counter()
+            try:
+                cover_storage_key = await asyncio.wait_for(
+                    cover_task,
+                    timeout=settings.playlist_cover_timeout_sec,
+                )
+            except TimeoutError:
+                cover_task.cancel()
+                warnings.append("AI-обложка не успела сгенерироваться.")
+            except CoverArtError:
+                warnings.append("Не удалось сгенерировать AI-обложку.")
+            except Exception as exc:
+                logger.warning("Cover generation failed for %s: %s", generation_id, exc)
+                warnings.append("Не удалось сгенерировать AI-обложку.")
+            finally:
+                cover_ms = int((time.perf_counter() - cover_started) * 1000)
+
         tracks = [_track_response(track) for track in selected]
         generation_options = PlaylistGenerationOptions(
             track_count=track_count,
@@ -371,10 +405,12 @@ class PlaylistService:
             "retrieval": retrieval_ms,
             "scoring": scoring_ms,
             "export": export_ms,
+            "cover": cover_ms,
         }
         warnings_count = len(warnings)
         full_n = pool_stats.selected == track_count
         row = await self._repo.create(
+            id=generation_id,
             user_id=user_id,
             prompt=prompt,
             title=profile.playlist_title,
@@ -391,6 +427,7 @@ class PlaylistService:
             warnings=warnings or None,
             warnings_count=warnings_count,
             client_channel=client_channel,
+            cover_storage_key=cover_storage_key,
         )
 
         logger.info(
@@ -420,6 +457,19 @@ class PlaylistService:
         )
 
         return generation_to_response(row)
+
+    async def get_cover_bytes(
+        self,
+        generation_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> tuple[bytes, str] | None:
+        row = await self._repo.get_by_id_for_user(generation_id, user_id)
+        if row is None or not row.cover_storage_key:
+            return None
+        data = self._cover.read_bytes(row.cover_storage_key)
+        if data is None:
+            return None
+        return data, "image/png"
 
     async def list_history(
         self,

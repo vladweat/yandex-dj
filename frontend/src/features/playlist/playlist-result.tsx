@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FadeIn } from "@/components/ui/fade-in";
 import { useAppRoutes } from "@/features/telegram/app-routes";
+import { PlaylistCover } from "@/features/playlist/playlist-cover";
 import { clearSessionId, generatePlaylist, setPlaylistFeedback } from "@/lib/api";
 import {
   classifyGenerateApiError,
@@ -166,14 +167,26 @@ export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
         )}
       >
         <CardHeader className={!isFull ? "gap-1" : undefined}>
-          <CardTitle className={cn(!isFull && "font-display text-lg tracking-tight sm:text-xl")}>
-            {current.title}
-          </CardTitle>
-          <CardDescription
-            className={cn("whitespace-pre-wrap", !isFull && "line-clamp-2 text-sm")}
-          >
-            {current.description}
-          </CardDescription>
+          <div className={cn(!isFull && "flex flex-col gap-4 sm:flex-row sm:items-start")}>
+            {current.has_cover ? (
+              <PlaylistCover
+                generationId={current.id}
+                hasCover={Boolean(current.has_cover)}
+                title={current.title}
+                className="shrink-0"
+              />
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <CardTitle className={cn(!isFull && "font-display text-lg tracking-tight sm:text-xl")}>
+                {current.title}
+              </CardTitle>
+              <CardDescription
+                className={cn("whitespace-pre-wrap", !isFull && "line-clamp-2 text-sm")}
+              >
+                {current.description}
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">

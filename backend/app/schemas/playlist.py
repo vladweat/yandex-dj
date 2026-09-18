@@ -62,6 +62,7 @@ class PlaylistGenerateResponse(BaseModel):
     source_id: uuid.UUID | None = None
     latency_ms: int | None = None
     feedback: FeedbackValue | None = None
+    has_cover: bool = False
 
 
 class PlaylistHistoryItem(BaseModel):

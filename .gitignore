@@ -12,6 +12,7 @@ build/
 
 # Auth pending state (device_code)
 backend/.auth/
+backend/data/covers/
 
 # Secrets
 .env
