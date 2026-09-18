@@ -8,6 +8,7 @@ from app.schemas.llm import MusicProfile
 
 DiversityMode = Literal["normal", "high"]
 FeedbackValue = Literal["like", "dislike"]
+TrackEditAction = Literal["remove", "replace"]
 
 
 class PlaylistGenerateRequest(BaseModel):
@@ -23,6 +24,11 @@ class PlaylistGenerateRequest(BaseModel):
 
 class PlaylistFeedbackRequest(BaseModel):
     value: FeedbackValue | None = None
+
+
+class PlaylistTrackEditRequest(BaseModel):
+    track_id: str = Field(min_length=1)
+    action: TrackEditAction = "replace"
 
 
 class PlaylistTrackResponse(BaseModel):

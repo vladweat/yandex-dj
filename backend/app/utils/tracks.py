@@ -16,6 +16,12 @@ def track_to_candidate(track: Track) -> TrackCandidate | None:
         album = first_album.title or ""
         genre = first_album.genre or ""
 
+    explicit: bool | None = None
+    if track.explicit is not None:
+        explicit = bool(track.explicit)
+    elif track.content_warning == "explicit":
+        explicit = True
+
     return TrackCandidate(
         id=str(track.id),
         title=track.title or "",
@@ -25,6 +31,7 @@ def track_to_candidate(track: Track) -> TrackCandidate | None:
         version=track.version or "",
         duration_ms=track.duration_ms or 0,
         available=track.available if track.available is not None else True,
+        explicit=explicit,
     )
 
 

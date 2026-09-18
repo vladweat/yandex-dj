@@ -32,7 +32,9 @@ export function PromptGallery() {
               </p>
             </div>
             <Button asChild variant="secondary" size="sm" className="mt-auto w-fit">
-              <Link href={promptDeepLink(item.prompt)}>Собрать плейлист</Link>
+              <Link href={promptDeepLink(item.prompt, "", { utmSource: "gallery" })}>
+                Собрать плейлист
+              </Link>
             </Button>
           </li>
         ))}

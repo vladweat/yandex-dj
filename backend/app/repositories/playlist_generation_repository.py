@@ -181,6 +181,24 @@ class PlaylistGenerationRepository:
         )
         return result.scalar_one_or_none()
 
+    async def update_tracks(
+        self,
+        generation_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        tracks: list[Any],
+        pool_stats: dict[str, Any] | None,
+    ) -> PlaylistGeneration | None:
+        row = await self.get_by_id_for_user(generation_id, user_id)
+        if row is None:
+            return None
+        row.tracks = tracks
+        if pool_stats is not None:
+            row.pool_stats = pool_stats
+        await self._db.commit()
+        await self._db.refresh(row)
+        return row
+
     async def update_feedback(
         self,
         generation_id: uuid.UUID,

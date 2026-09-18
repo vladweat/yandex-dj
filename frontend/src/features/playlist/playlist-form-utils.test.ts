@@ -32,10 +32,14 @@ describe("GALLERY_PROMPTS", () => {
     expect(GALLERY_PROMPTS.slice(0, 7).map((item) => item.prompt)).toEqual([
       ...SAMPLE_PROMPTS,
     ]);
-    expect(promptDeepLink("kitchen")).toBe("/?prompt=kitchen");
-    expect(promptDeepLink("a b", "https://example.com")).toBe(
-      "https://example.com/?prompt=a%20b",
+    expect(promptDeepLink("kitchen")).toBe(
+      "/?prompt=kitchen&utm_source=share&utm_medium=prompt&utm_campaign=prompt_dj",
     );
+    expect(promptDeepLink("a b", "https://example.com", { utmSource: "gallery" })).toBe(
+      "https://example.com/?prompt=a+b&utm_source=gallery&utm_medium=prompt&utm_campaign=prompt_dj",
+    );
+    const { formatPromptShareText } = await import("@/features/playlist/playlist-form-utils");
+    expect(formatPromptShareText("кухня", "https://x/?p=1")).toBe("кухня\n\nhttps://x/?p=1");
   });
 });
 

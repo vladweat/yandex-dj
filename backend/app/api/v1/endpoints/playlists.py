@@ -25,6 +25,7 @@ from app.schemas.playlist import (
     PlaylistGenerateResponse,
     PlaylistHistoryResponse,
     PlaylistQuotaResponse,
+    PlaylistTrackEditRequest,
 )
 from app.services.playlist_service import PlaylistService
 
@@ -76,6 +77,34 @@ async def get_playlist(
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+
+@router.patch("/{generation_id}/tracks", response_model=PlaylistGenerateResponse)
+async def edit_playlist_track(
+    generation_id: uuid.UUID,
+    body: PlaylistTrackEditRequest,
+    session: Session = CurrentSession,
+    service: PlaylistService = Depends(get_playlist_service),
+) -> PlaylistGenerateResponse:
+    access_token = decrypt_token(session.encrypted_token)
+    try:
+        return await service.edit_track(
+            generation_id,
+            session.user_id,
+            track_id=body.track_id,
+            action=body.action,
+            access_token=access_token,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except (ExportError, ScoringError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
 

@@ -20,9 +20,11 @@ import type { DiversityMode } from "@/types/playlist";
 import { cn } from "@/lib/utils";
 import {
   classifyGenerateApiError,
+  GENERATION_LATENCY_HINT,
   ONBOARDING_SITUATIONS,
   parseExcludeArtists,
   pushGenerateWarnings,
+  REGEN_LATENCY_HINT,
   SAMPLE_PROMPTS,
   validatePlaylistFormInput,
 } from "@/features/playlist/playlist-form-utils";
@@ -400,7 +402,18 @@ export function PlaylistForm({ variant = "simple", compact = false }: PlaylistFo
 
       {!isFull && submitting ? (
         <p className="text-[12px] text-muted-foreground/75">
-          Обычно 7–20 секунд — можно свернуть вкладку
+          Обычно {GENERATION_LATENCY_HINT} — можно свернуть вкладку
+        </p>
+      ) : null}
+
+      {!submitting ? (
+        <p
+          className={cn(
+            "text-[12px] leading-relaxed text-muted-foreground/75",
+            isFull ? "text-slate-500" : "",
+          )}
+        >
+          Новая генерация — обычно {GENERATION_LATENCY_HINT}. {REGEN_LATENCY_HINT}.
         </p>
       ) : null}
     </form>

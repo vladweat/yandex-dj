@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     library_likes_track_limit: int = 80
     library_recent_full_models: int = 40
     library_artist_boost: float = 0.025
+    # Soft lyrics filter (instrumental_only): tracks_lyrics API, не default hot path
+    lyrics_check_limit: int = 80
+    lyrics_vocal_score_penalty: float = 0.045
     # 0 = embed весь пул кандидатов (до max_candidates)
     scoring_embed_limit: int = 0
     embedding_batch_size: int = 64
