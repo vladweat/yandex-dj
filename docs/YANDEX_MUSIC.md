@@ -135,6 +135,8 @@ url = f"https://music.yandex.ru/users/{login}/playlists/{playlist.kind}"
 
 **Описание:** `profile.playlist_description` + исходный промпт (`\n\nПромпт: …`), если промпт ещё не в тексте.
 
+**Обложка плейлиста:** export меняет только title, треки и description. AI-обложка (P2.2) хранится локально в Prompt DJ и **не** отправляется в API Яндекса — в клиенте Яндекс Музыки пользователь видит стандартную обложку (мозаика из треков). См. [API.md](API.md) § `GET /playlists/{id}/cover`.
+
 **Ограничения:**
 - `album_id` обязателен для `insert_track`; треки без альбома пропускаются
 - вставка по одному треку (revision optimistic locking)

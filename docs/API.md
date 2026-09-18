@@ -349,6 +349,8 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 
 **Cover art (P2.2):** параллельно retrieval/scoring/export — KodikRouter `POST /v1/images/generations`, модель **`qwen/qwen-image-3-pro`** (1:1, 1K по умолчанию); PNG в `COVER_STORAGE_DIR`; не блокирует `200`, если таймаут — warning.
 
+**Обложка в Яндекс Музыке:** export не загружает PNG в аккаунт — в приложении Яндекса остаётся их обложка плейлиста (мозаика из треков). AI-картинка только в Prompt DJ (`has_cover`, `GET …/cover`). В `yandex-music` SDK нет метода upload custom cover; отдельный спайк — только если появится документированный endpoint.
+
 **Семантика полей ответа:**
 
 | Поле | Источник | Примечание |

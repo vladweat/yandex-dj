@@ -43,7 +43,7 @@ Prompt DJ: **Bearer `session_id`** (UUID из Device Flow).
 2. **Форма (simple):** промпт, 3 чипа-ситуации (до первого результата), ссылка на `/gallery`, чекбокс `use_library`, soft-квота; дефолты: 25 треков, `diversity=normal`. «Отменить» + мягкий latency copy.
 3. **Prefill:** `?prompt=…`; draft из истории («Снова»). AuthGate → `?next=` (cold share links).
 4. **Submit:** `POST /api/v1/playlists/generate`; при `401` → `/login`; `504` / `429` / `warnings` — как раньше.
-5. **Результат (simple):** primary — «Открыть в Яндекс Музыке» + like/dislike; AI-обложка (`has_cover` → blob fetch); secondary — «Ещё вариант», share/copy; треки **свёрнуты** (раскрываются по клику); **без** MusicProfile / pool_stats.
+5. **Результат (simple):** primary — «Открыть в Яндекс Музыке» + like/dislike; AI-обложка (`has_cover` → blob fetch, **только здесь** — в Яндексе другая обложка); secondary — «Ещё вариант», share/copy; треки **свёрнуты** (раскрываются по клику); **без** MusicProfile / pool_stats.
 6. **История:** справа rail на `lg+`; на мобиле — кнопка «История» → drawer. Не занимает вертикаль генерации.
 
 ## Lab `/lab` (полный функционал)

@@ -95,7 +95,7 @@
 | # | Доработка | Scope | Статус |
 |---|-----------|-------|--------|
 | P2.1 | **Lyrics**: «без слов» / NSFW (`tracks_lyrics`) | Soft filter, не default hot path | [x] |
-| P2.2 | **AI-обложка** плейлиста | Шаринг / polish | [x] |
+| P2.2 | **AI-обложка** плейлиста | Шаринг / polish в Prompt DJ; **не** в Яндекс (см. [API.md](API.md) § cover, [YANDEX_MUSIC.md](YANDEX_MUSIC.md) § export) | [x] |
 | P2.3 | Шаринг «промпт + ссылка» с UTMs / deep link | Secondary growth | [x] |
 | P2.4 | Выкинуть / заменить трек в результате | Контроль без полной реген | [x] |
 | P2.5 | Мягкий показ latency/cost («~12 сек; Ещё вариант — без LLM») | Ожидания UX | [x] |
