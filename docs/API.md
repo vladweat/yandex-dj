@@ -64,7 +64,8 @@
   "session_id": "uuid4",
   "login": "username",
   "yandex_uid": 411193386,
-  "expires_at": "2026-10-14T12:23:41.148639Z"
+  "expires_at": "2026-10-14T12:23:41.148639Z",
+  "telegram_user_id": null
 }
 ```
 
@@ -72,6 +73,21 @@
 - `401` — невалидная или истёкшая сессия
 
 Используется Next.js UI при boot (`auth-provider`) и после Device Flow. См. [FRONTEND.md](FRONTEND.md).
+
+### `POST /api/v1/auth/telegram/link`
+
+Привязка Telegram-аккаунта к текущей сессии (Mini App `initData`).
+
+**Headers:** `Authorization: Bearer <session_id>`
+
+**Запрос:**
+```json
+{ "init_data": "<Telegram.WebApp.initData>" }
+```
+
+**Ответ `200`:** `{ "telegram_user_id": 123456789 }`
+
+**Ошибки:** `400` — невалидная подпись / истёкший `auth_date`; `401` — сессия.
 
 ---
 
@@ -247,7 +263,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 
 **Целевая latency:** 7–12 сек (промпт → `playlist_url`).
 
-**Headers:** `Authorization: Bearer <session_id>` (обязательно; OAuth-токен Яндекса берётся из сессии на сервере)
+**Headers:** `Authorization: Bearer <session_id>` (обязательно; OAuth-токен Яндекса берётся из сессии на сервере). Опционально `X-Client-Channel: telegram` (Mini App) — persist в `playlist_generations.client_channel` и product metrics.
 
 **Запрос:**
 ```json

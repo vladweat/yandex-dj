@@ -21,3 +21,5 @@ class ProductMetricsResponse(BaseModel):
     regen_count: int = 0
     returning_users: int = 0
     active_users: int = 0
+    generations_telegram: int = 0
+    generations_web: int = 0

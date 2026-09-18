@@ -66,6 +66,32 @@ services:
       timeout: 5s
       retries: 5
 
+  bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: prompt-dj-bot
+    command: ["python", "-m", "app.bot.main"]
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://prompt_dj:prompt_dj@db:5432/prompt_dj
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
+      https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
+      NO_PROXY: localhost,127.0.0.1,db,postgres,redis
+      no_proxy: localhost,127.0.0.1,db,postgres,redis
+      TELEGRAM_BOT_USE_PROXY: ${TELEGRAM_BOT_USE_PROXY:-true}
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    volumes:
+      - ./backend/app:/app/app
+    depends_on:
+      db:
+        condition: service_healthy
+
   frontend:
     image: prompt-dj-frontend:latest
     pull_policy: never

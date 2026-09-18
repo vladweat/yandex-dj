@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, type ReactNode } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,12 +19,14 @@ function GateStatus({ label }: { label: string }) {
 function GuestRedirect({ children }: { children: ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const fallback = pathname?.startsWith("/tg") ? "/tg" : "/";
 
   useEffect(() => {
     if (loading || !isAuthenticated) return;
-    router.replace(postLoginPath(searchParams.get("next")));
-  }, [isAuthenticated, loading, router, searchParams]);
+    router.replace(postLoginPath(searchParams.get("next"), fallback));
+  }, [fallback, isAuthenticated, loading, router, searchParams]);
 
   if (loading) {
     return <GateStatus label="Загрузка…" />;

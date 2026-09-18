@@ -12,6 +12,8 @@
 | `/` | **Пользовательский** UI: textarea-hero → результат → история; `?prompt=` prefill |
 | `/lab` | **Полный** UI (опции, MusicProfile, pool_stats, scores) — для отладки |
 | `/gallery` | Публичная галерея промптов (без логина) → `/?prompt=…` |
+| `/tg` | **Telegram Mini App** — тот же simple UI, что `/`; `X-Client-Channel: telegram` |
+| `/tg/login` | Device Flow для Mini App |
 | `/health` | Статус API (опционально) |
 | `/debug` | Статус аккаунта Яндекс Музыки; ссылка на `/lab` |
 
@@ -121,4 +123,4 @@ make up-frontend   # http://localhost:3001
 | ~~P1.4~~ | Онбординг + ожидание 7–20 сек |
 | ~~P1.5~~ | Soft-квоты + UX лимита |
 | P2.3–P2.5 | Шаринг с UTMs; replace track; мягкий latency copy |
-| P1.1 | Telegram — отдельный клиент того же API |
+| P1.1 | Telegram `/tg` — в коде; E2E ⏸ [TELEGRAM.md](TELEGRAM.md) |

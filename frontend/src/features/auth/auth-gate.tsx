@@ -23,10 +23,11 @@ function AuthGateInner({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (loading || isAuthenticated) return;
-    if (!pathname || pathname === "/login") return;
+    if (!pathname || pathname === "/login" || pathname === "/tg/login") return;
+    const loginPath = pathname.startsWith("/tg") ? "/tg/login" : "/login";
     const query = searchParams.toString();
     const target = query ? `${pathname}?${query}` : pathname;
-    router.replace(`/login?next=${encodeURIComponent(target)}`);
+    router.replace(`${loginPath}?next=${encodeURIComponent(target)}`);
   }, [isAuthenticated, loading, pathname, router, searchParams]);
 
   if (loading) {

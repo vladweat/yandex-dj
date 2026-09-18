@@ -63,7 +63,7 @@ Embeddings подключаются **сразу** (не откладывают�
 
 Авторизация UI: Bearer `session_id` (Device Flow), не cookie. Подробнее: [FRONTEND.md](FRONTEND.md).
 
-Telegram-бот — PRODUCT P1.1 ([PRODUCT.md](PRODUCT.md)); чеклист — [DEVELOPMENT.md](DEVELOPMENT.md) § этап 7+.
+Telegram (Mini App + aiogram) — P1.1, состояние: [TELEGRAM.md](TELEGRAM.md).
 
 ## База данных
 
@@ -96,7 +96,7 @@ SQLite не используется.
 | Ollama / локальные LLM | OpenAI API; 3.8 GiB RAM |
 | SQLite | PostgreSQL с первого этапа |
 | typer | click |
-| Telegram / aiogram | FastAPI первым |
+| — | Telegram: `aiogram`, `aiohttp-socks` (бот); см. [TELEGRAM.md](TELEGRAM.md) |
 | Celery / Arq | Пайплайн укладывается в 7–12 сек |
 | Qdrant | Пул 150–300 в памяти |
 | scikit-learn | Достаточно numpy |

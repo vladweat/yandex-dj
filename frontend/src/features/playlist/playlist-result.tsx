@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FadeIn } from "@/components/ui/fade-in";
+import { useAppRoutes } from "@/features/telegram/app-routes";
 import { clearSessionId, generatePlaylist, setPlaylistFeedback } from "@/lib/api";
 import {
   classifyGenerateApiError,
@@ -40,6 +41,7 @@ type PlaylistResultProps = {
 
 export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
   const router = useRouter();
+  const { loginPath } = useAppRoutes();
   const queryClient = useQueryClient();
   const result = usePlaylistStore((state) => state.result);
   const setResult = usePlaylistStore((state) => state.setResult);
@@ -104,7 +106,7 @@ export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
       if (action.kind === "unauthorized") {
         clearSessionId();
         pushToast("Сессия истекла — войдите снова", "error");
-        router.replace("/login");
+        router.replace(loginPath);
       } else {
         pushToast("Не удалось сохранить оценку", "error");
       }
@@ -142,7 +144,7 @@ export function PlaylistResult({ variant = "simple" }: PlaylistResultProps) {
       } else if (action.kind === "unauthorized") {
         clearSessionId();
         pushToast("Сессия истекла — войдите снова", "error");
-        router.replace("/login");
+        router.replace(loginPath);
       } else if (action.kind === "timeout" || action.kind === "quota" || action.kind === "message") {
         pushToast(action.message, "error");
       } else if (action.kind === "unavailable") {

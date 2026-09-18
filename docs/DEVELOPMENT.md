@@ -249,7 +249,7 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 
 ### P1 — рост и дифференциатор
 
-- [ ] **P1.1** Telegram-бот (`aiogram`) — тот же generate API
+- [~] **P1.1** Telegram — см. [TELEGRAM.md](TELEGRAM.md) (код в репо; E2E на dev-server ⏸)
 - [x] **P1.2** Галерея промптов → `/?prompt=…`
 - [x] **P1.3** Персонализация: likes / recently played Яндекса (soft bias)
 - [x] **P1.4** Онбординг (ожидание 7–20 сек + 3 ситуации)
@@ -274,6 +274,10 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 **Порядок:** P0 → P1.1∥P1.4 → P1.5 → P1.3 → P1.2 → P2 → P3 по триггеру.
 
 **Не сейчас:** multi-catalog, org-mode, перепись UI, редакционка, монетизация «Ещё вариант», regex под жанр.
+
+### Telegram (P1.1) — пауза
+
+Канон состояния и чеклист возобновления: **[TELEGRAM.md](TELEGRAM.md)**.
 
 ---
 

@@ -73,3 +73,12 @@ FROM playlist_generations
 WHERE created_at >= now() - interval '7 days'
 GROUP BY 1
 ORDER BY cnt DESC;
+
+-- 7) Client channel (web vs telegram)
+SELECT
+  client_channel,
+  count(*) AS cnt
+FROM playlist_generations
+WHERE created_at >= now() - interval '7 days'
+GROUP BY 1
+ORDER BY cnt DESC;

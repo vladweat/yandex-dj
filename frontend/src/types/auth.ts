@@ -20,4 +20,5 @@ export interface AuthMeResponse {
   login: string;
   yandex_uid: number;
   expires_at: string;
+  telegram_user_id?: number | null;
 }

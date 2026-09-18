@@ -2,7 +2,7 @@
 
 > Канон продуктовых приоритетов после MVP (этапы 0–6 ✅).  
 > Инженерный чеклист: [DEVELOPMENT.md](DEVELOPMENT.md). Качество пайплайна: [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md).  
-> Обновлено: 2026-09-17.
+> Обновлено: 2026-09-18.
 
 ## Вердикт
 
@@ -37,7 +37,7 @@
 | Ядро пайплайна E2E | ✅ |
 | Качество на golden-сценариях | ✅ |
 | Продукт вокруг генерации (история, реген, опции, UX, CI) | ✅ |
-| Каналы / growth | ⚠️ галерея `/gallery` → `?prompt=`; Telegram ещё нет |
+| Каналы / growth | ✅ галерея `/gallery`; Telegram — код `/tg` + bot, **E2E пауза** ([TELEGRAM.md](TELEGRAM.md)) |
 | Персонализация от listening history | ✅ soft bias (`use_library`) |
 | Метрики продукта / feedback loop | ✅ P0 (metrics + golden) |
 | Монетизация / квоты | ✅ soft N/сутки |
@@ -84,7 +84,7 @@
 
 | # | Доработка | Scope | Статус |
 |---|-----------|-------|--------|
-| P1.1 | **Telegram-бот** (`aiogram`) — тот же generate API | Канал acquisition №1 | [ ] |
+| P1.1 | **Telegram** Mini App `/tg` + thin bot (`aiogram`) — тот же generate API | Канал acquisition №1 | [~] код ✅, E2E ⏸ ([TELEGRAM.md](TELEGRAM.md)) |
 | P1.2 | Публичная **галерея промптов** → `/?prompt=…` | Organic / sharing | [x] |
 | P1.3 | **Персонализация из Яндекса**: likes / recently played как soft bias | Флаг «учитывать мою библиотеку» | [x] |
 | P1.4 | Онбординг: что умеет + 3 ситуации + ожидание 7–20 сек | Frontend | [x] |

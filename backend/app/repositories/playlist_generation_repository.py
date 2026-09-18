@@ -87,7 +87,11 @@ class PlaylistGenerationRepository:
                      FROM windowed)::int AS with_feedback,
                   (SELECT avg((pool_stats->>'clean')::float)
                      FROM windowed
-                     WHERE pool_stats IS NOT NULL AND pool_stats ? 'clean') AS avg_clean
+                     WHERE pool_stats IS NOT NULL AND pool_stats ? 'clean') AS avg_clean,
+                  (SELECT count(*) FILTER (WHERE client_channel = 'telegram')
+                     FROM windowed)::int AS generations_telegram,
+                  (SELECT count(*) FILTER (WHERE client_channel = 'web')
+                     FROM windowed)::int AS generations_web
                 """
             ),
             {"since": since},
@@ -119,6 +123,7 @@ class PlaylistGenerationRepository:
         latency_breakdown: dict[str, Any] | None = None,
         warnings: list[str] | None = None,
         warnings_count: int = 0,
+        client_channel: str = "web",
     ) -> PlaylistGeneration:
         row = PlaylistGeneration(
             user_id=user_id,
@@ -136,6 +141,7 @@ class PlaylistGenerationRepository:
             latency_breakdown=latency_breakdown,
             warnings=warnings,
             warnings_count=warnings_count,
+            client_channel=client_channel,
         )
         self._db.add(row)
         await self._db.flush()

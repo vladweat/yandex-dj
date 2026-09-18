@@ -14,6 +14,7 @@ import type {
   PlaylistQuotaResponse,
 } from "@/types/playlist";
 import type { YandexStatusResponse } from "@/types/yandex";
+import { getClientChannel } from "@/lib/client-channel";
 
 const CONFIGURED_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 export const API_V1 = "/api/v1";
@@ -82,6 +83,7 @@ async function authorizedFetch(path: string, options: RequestInit = {}): Promise
     headers.set("Authorization", `Bearer ${sessionId}`);
   }
   headers.set("X-Requested-With", "PromptDJ");
+  headers.set("X-Client-Channel", getClientChannel());
   const init: RequestInit = {
     ...options,
     headers,
@@ -156,6 +158,13 @@ export async function pollDeviceFlow(
 
 export async function fetchMe(): Promise<AuthMeResponse> {
   return apiFetch<AuthMeResponse>("/auth/me");
+}
+
+export async function linkTelegramAccount(initData: string): Promise<{ telegram_user_id: number }> {
+  return apiFetch<{ telegram_user_id: number }>("/auth/telegram/link", {
+    method: "POST",
+    body: JSON.stringify({ init_data: initData }),
+  });
 }
 
 export async function fetchYandexAccount(): Promise<YandexStatusResponse> {

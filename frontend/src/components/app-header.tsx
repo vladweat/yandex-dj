@@ -28,6 +28,9 @@ const AUTH_NAV = [
 export function AppHeader() {
   const { isAuthenticated, user, logout } = useAuth();
   const pathname = usePathname();
+  if (pathname?.startsWith("/tg")) {
+    return null;
+  }
   const nav = isAuthenticated ? [...AUTH_NAV, ...PUBLIC_NAV] : PUBLIC_NAV;
   const isHome = pathname === "/";
 

@@ -25,3 +25,12 @@ class AuthMeResponse(BaseModel):
     login: str
     yandex_uid: int
     expires_at: datetime
+    telegram_user_id: int | None = None
+
+
+class TelegramLinkRequest(BaseModel):
+    init_data: str
+
+
+class TelegramLinkResponse(BaseModel):
+    telegram_user_id: int

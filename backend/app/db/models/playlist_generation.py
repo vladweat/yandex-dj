@@ -40,6 +40,7 @@ class PlaylistGeneration(Base):
     warnings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     feedback: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     feedback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    client_channel: Mapped[str] = mapped_column(String(32), nullable=False, default="web")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

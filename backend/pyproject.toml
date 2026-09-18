@@ -25,6 +25,8 @@ dependencies = [
     "instructor>=1.0",
     "numpy>=1.26",
     "redis>=5.0",
+    "aiogram>=3.13",
+    "aiohttp-socks>=0.9",
 ]
 
 [project.optional-dependencies]
