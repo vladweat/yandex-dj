@@ -69,6 +69,26 @@ tests, Compose, Makefile, CI и существующие Markdown-файлы.
 
 Для этих тем документированы пробелы, а не вымышленные процедуры.
 
+## Выполненная валидация
+
+| Проверка | Результат |
+|---|---|
+| Relative Markdown links | 27 файлов, broken paths не найдены |
+| Ключевые referenced paths | существуют |
+| `Settings` ↔ `CONFIGURATION.md` | 58 из 58 полей перечислены |
+| FastAPI OpenAPI | 17 реализованных paths; phantom async routes отсутствуют |
+| Backend tests | 209 passed с `TOKEN_ENCRYPTION_KEY`, как в [TESTING.md](TESTING.md) |
+| Frontend TypeScript + Vitest | passed; 3 files, 26 tests |
+| Secret-pattern scan Markdown | совпадений не найдено |
+| `ruff check app tests` | failed: 6 существующих ошибок (2× E501, 4× I001) |
+| Markdown/Mermaid syntax tooling | пропущено: validators не входят в зависимости проекта |
+
+Backend lint не исправлялся, потому что аудит документации не разрешает
+functional/source cleanup. Ошибки находятся в
+`backend/app/api/v1/endpoints/playlists.py`, `backend/app/bot/main.py`,
+`backend/app/services/auth_service.py`, `backend/tests/conftest.py`,
+`backend/tests/test_cover_art.py` и `backend/tests/test_telegram_webapp.py`.
+
 ## Maintenance
 
 При каждом изменении:

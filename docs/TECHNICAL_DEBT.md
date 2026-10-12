@@ -7,7 +7,7 @@
 
 | Компонент | Статус | Evidence | Потенциальное влияние | Рекомендация |
 |---|---|---|---|---|
-| Sessions | Подтверждённое ограничение | `frontend/src/features/auth/auth-provider.tsx:logout`; нет revoke route в `backend/app/api/v1/router.py` | Украденный Bearer действует до TTL; logout только локальный | Server-side revoke, cleanup expired sessions, тесты |
+| Sessions | Подтверждённое ограничение | `frontend/src/features/auth/auth-provider.tsx:handleLogout`; нет revoke route в `backend/app/api/v1/router.py` | Украденный Bearer действует до TTL; logout только локальный | Server-side revoke, cleanup expired sessions, тесты |
 | Public scoring | Подтверждённый риск | `backend/app/api/v1/endpoints/scoring.py:rank_tracks` не использует `CurrentSession`; rate limiter отсутствует в `app/main.py` | Неаутентифицированная CPU/RAM нагрузка | Auth/rate limit либо убрать route из public deployment |
 | Secret rotation | Подтверждённое ограничение | `backend/app/core/security.py:_get_fernet` поддерживает один `TOKEN_ENCRYPTION_KEY` | Замена ключа инвалидирует все ciphertext | Versioned keyring и re-encryption runbook |
 | External/DB consistency | Подтверждённый риск | `PlaylistService.generate` экспортирует до `PlaylistGenerationRepository.create`, который commit делает отдельно | Плейлист Яндекса может создаться без history row | Idempotency/reconciliation и явная saga policy |
@@ -27,12 +27,13 @@
 | Frontend API URL | Подтверждённый operational trap | `NEXT_PUBLIC_API_URL` читается browser bundle; runtime env не переписывает build | UI обращается к неверному API после deploy | Build-time config contract или runtime config endpoint |
 | Background processing | Подтверждённое ограничение | `generate_playlist` использует `asyncio.wait_for`; Celery/ARQ нет | Долгий request, cancellation/timeout и retry complexity | Вводить queue только по p95/нагрузочному триггеру из PRODUCT |
 | Retention/privacy | Подтверждённый пробел | нет delete API/jobs для sessions, generations, covers | Бесконечный рост и неопределённый data lifecycle | Политика retention и user deletion |
+| CI lint gate | Подтверждённый дефект | `ruff check app tests` на 2026-10-12: 2× E501, 4× I001 | Backend CI job не проходит lint | Исправить отдельным source-only change и сохранить gate |
 
 ## Low
 
 | Компонент | Статус | Evidence | Влияние | Рекомендация |
 |---|---|---|---|---|
-| Error mapping | Подтверждённый долг | локальные `try/except` во всех endpoints и `api/playlist_http.py` | Drift status codes/messages | Typed global handlers без переноса business logic в HTTP |
+| Error mapping | Подтверждённый долг | локальный HTTP mapping в большинстве endpoints; generate делегирует `api/playlist_http.py` | Drift status codes/messages | Typed global handlers без переноса business logic в HTTP |
 | Frontend contract | Подтверждённый drift | backend `exclude_languages`, frontend `PlaylistGenerateRequest` поля нет | UI не даёт задать поддерживаемую опцию | Синхронизировать types/UI либо явно оставить API-only |
 | Offline package | Подтверждённый пробел | `scripts/pack-offline-bundle.sh` не включает frontend | Archive не является full product bundle | Включить frontend artifacts или переименовать backend bundle |
 | CLI docs | Подтверждённый пробел | `backend/app/cli/main.py` шире списка в `backend/README.md` | Сложнее диагностика | Поддерживать command reference через `--help` |
