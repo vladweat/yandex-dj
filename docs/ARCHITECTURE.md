@@ -7,12 +7,42 @@
 | Модуль | Код | Ответственность | Вход | Выход |
 |--------|-----|-----------------|------|-------|
 | Prompt Understanding | `services/llm_service.py` | Декомпозиция NL-запроса | Промпт | `MusicProfile` |
-| Candidate Retrieval | `services/retrieval_service.py` | Сбор пула через API | `MusicProfile` | 150–300 `TrackCandidate` |
+| Candidate Retrieval | `services/retrieval/` | Сбор пула через API | `MusicProfile` | до 300 `TrackCandidate` |
 | Scoring & Ranking | `services/scoring_service.py` + `utils/scoring/` | Векторный скоринг | Промпт + кандидаты | `list[ScoredTrack]` |
-| Playlist Builder | `services/yandex_music_service.py` | Создание плейлиста | Топ-N треков | URL плейлиста |
+| Playlist Builder | `services/yandex/` | Создание плейлиста | Топ-N треков | URL плейлиста |
 | Auth & Sessions | `services/` + `api/.../auth` | Device Flow, шифрование токенов | — | `session_id` |
 | API | `api/v1/endpoints/` | FastAPI endpoints | HTTP | JSON |
 | Pipeline | `services/playlist_service.py` | Оркестрация generate | Промпт + опции | `PlaylistGenerateResponse` |
+
+Это слоистый монолит, а не набор микросервисов: API, pipeline и data access
+работают в одном Python-процессе. Bot и frontend — отдельные процессы.
+
+## Жизненный цикл HTTP-запроса
+
+```mermaid
+sequenceDiagram
+    participant C as Browser
+    participant E as FastAPI endpoint
+    participant D as dependencies
+    participant S as PlaylistService
+    participant X as LLM/Yandex/Redis
+    participant R as Repository
+    participant P as PostgreSQL
+
+    C->>E: POST /api/v1/playlists/generate + Bearer
+    E->>D: get_current_session / get_playlist_service
+    D->>P: SessionRepository.get_valid
+    E->>S: generate(...)
+    S->>X: LLM, retrieval/cache, scoring, export
+    S->>R: create generation
+    R->>P: flush + commit
+    S-->>E: PlaylistGenerateResponse
+    E-->>C: JSON
+```
+
+`api/deps.py` создаёт request-scoped `AsyncSession`. Endpoints преобразуют
+domain exceptions в HTTP statuses; централизованного global exception handler
+нет. Весь generate обёрнут `asyncio.wait_for(PIPELINE_TIMEOUT_SEC)`.
 
 ## Пайплайн
 
@@ -53,9 +83,9 @@
 │ PostgreSQL  │     │    Redis    │     │  yandex-    │
 │    15       │     │  кэш track  │     │  music API  │
 │             │     │  metadata   │     │             │
-│  users      │     │  (этап 3)   │     │             │
-│  tokens (*) │     │             │     │             │
-│  sessions   │     │             │     │             │
+│  users      │     │ metadata +  │     │             │
+│  sessions   │     │ lyrics      │     │             │
+│ generations │     │             │     │             │
 └─────────────┘     └─────────────┘     └─────────────┘
 
 (*) токены зашифрованы Fernet; ORM — SQLAlchemy
@@ -112,7 +142,7 @@
 ## Этап 4: Export
 
 1. `users_playlists_create(title=profile.playlist_title)`
-2. `users_playlists_insert_track()` — в порядке score
+2. `users_playlists_change()` с одним `Difference.add_insert` для списка треков
 3. Описание: `profile.playlist_description` + исходный промпт
 4. URL: `https://music.yandex.ru/users/{login}/playlists/{kind}`
 
@@ -134,9 +164,30 @@ API-контракты: [API.md](API.md). UX и маршруты: [FRONTEND.md](
 | LLM: невалидный JSON | Retry через instructor (до 2 раз) |
 | Пул < 100 кандидатов | Расширить search_queries, повторить |
 | HTTP 429 от Яндекса | Exponential backoff, retry |
-| Токен истёк | 401 → переавторизация Device Flow |
+| Prompt DJ session истекла | 401 → повторный Device Flow |
 | Embeddings недоступны | Fallback-скоринг |
 | Трек `available=False` | Пропустить, следующий по score |
+
+## Асинхронность и фоновые операции
+
+- Yandex/OpenAI/Redis I/O выполняется async.
+- CPU-bound embeddings/scoring запускаются через executor.
+- Cover создаётся `asyncio.create_task` параллельно основному pipeline, но
+  результат ожидается с отдельным timeout до ответа.
+- Bot использует aiogram long polling в отдельном Compose service.
+- Очереди задач, scheduler и durable background jobs отсутствуют. Generate
+  остаётся синхронным HTTP request.
+
+## Транзакции и внешние границы
+
+`get_db()` не делает implicit commit. Auth commit выполняет service, а
+generation create/update — repository. Экспорт в Яндекс происходит раньше
+persist в PostgreSQL; общей транзакции между Яндексом, БД, Redis и filesystem
+нет. Подробности: [DATABASE.md](DATABASE.md).
+
+Внешние boundaries: OpenAI-compatible API, Yandex Music API, Telegram Bot API.
+Retries Яндекса находятся в service wrapper; универсальной idempotency key и
+distributed retry policy нет.
 
 ## Структура кода
 
@@ -172,4 +223,5 @@ SCORING_EMBED_LIMIT=0
 TOKEN_ENCRYPTION_KEY=
 ```
 
-Окружение dev-машины: [INFRASTRUCTURE.md](INFRASTRUCTURE.md).
+Полный каталог: [CONFIGURATION.md](CONFIGURATION.md). Runtime и startup:
+[OPERATIONS.md](OPERATIONS.md).

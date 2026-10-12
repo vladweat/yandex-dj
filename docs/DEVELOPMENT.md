@@ -11,11 +11,11 @@
 | Docker | ✅ `prompt-dj-api` + `prompt-dj-db` (PostgreSQL 15) + Redis 7 + frontend |
 | FastAPI | ✅ `/api/v1/health` → `200 ok` |
 | Auth / Playlists | ✅ Device Flow + `POST /playlists/generate` (end-to-end) |
-| Frontend | ✅ Next.js: `/login`, `/` (генерация + таблица + `pool_stats`) — [FRONTEND.md](FRONTEND.md) |
+| Frontend | ✅ Next.js: `/login`, `/` (simple UI); diagnostics и `pool_stats` — `/lab`, см. [FRONTEND.md](FRONTEND.md) |
 | Пайплайн (LLM → export) | ✅ LLM → retrieval → scoring → export |
 | Качество плейлистов | ✅ этап 5.5: P0/P1/P2 — [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) |
 | Продукт (этап 6) | ✅ история / реген / profile / опции / UX / CI |
-| CI | ✅ `.github/workflows/ci.yml` — ruff + pytest + tsc/vitest |
+| CI | Настроен `.github/workflows/ci.yml` — ruff + pytest + tsc/vitest; текущий статус проверять в CI |
 | Техдолг A/B/C1–C5 | ✅ (C6 — опциональный Яндекс E2E в CI) |
 | **Следующий фокус** | [PRODUCT.md](PRODUCT.md): **P1.1 Telegram E2E**; P3 по триггеру |
 
@@ -172,7 +172,7 @@ prompt-dj scoring rank --prompt "dark synthwave for night coding" --token "$YAND
 
 - [x] `PlaylistService.generate()` — LLM → retrieval → scoring → export
 - [x] `POST /api/v1/playlists/generate` ([API.md](API.md))
-- [x] Экспорт: `users_playlists_create` + `insert_track` + description + URL
+- [x] Экспорт: `users_playlists_create` + batch `users_playlists_change` + description + URL
 - [x] Метрики latency по этапам в логах
 
 **Проверка:** промпт через API → ссылка на плейлист за 7–12 сек.
@@ -201,7 +201,7 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 - [x] Retrieval: similar seeds, frequency-rank discovered + similar, `min_clean_candidates`
 - [x] Scoring feedback при `selected < N`; `pool_stats` в ответе
 - [x] **P0:** kitchen curl/UI → `tracks.length == 25`, `clean ≥ 40`
-- [x] Frontend: генерация без заглушки, таблица + `pool_stats`
+- [x] Frontend: генерация без заглушки; таблица + `pool_stats` в full UI `/lab`
 - [x] **P1:** хвост без embedding-мусора (Hauvy и т.п.); cap якорей ~60%
 - [x] **P2:** latency budget 7–12 сек (`SCORING_EMBED_LIMIT` / меньше double-embed)
 
@@ -332,5 +332,7 @@ curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
 cd backend
 ruff check app tests
 ruff format .
-pytest
+python -m pytest tests/ -q  # нужен валидный TOKEN_ENCRYPTION_KEY
 ```
+
+Актуальный scope тестов и CI: [TESTING.md](TESTING.md).

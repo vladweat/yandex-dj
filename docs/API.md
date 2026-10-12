@@ -4,6 +4,20 @@
 
 Авторизация сессии: `Authorization: Bearer <session_id>`
 
+Источник runtime-контракта — Pydantic schemas и routes в
+`backend/app/api/v1/endpoints/`; интерактивная схема доступна на `/docs`, JSON —
+на `/openapi.json`. Этот файл объясняет семантику и должен обновляться вместе с
+кодом, но не заменяет сгенерированный OpenAPI.
+
+| Группа | Auth |
+|---|---|
+| `/health`, `/auth/device-flow/*` | public |
+| `/llm`, `/retrieval`, `/yandex`, `/playlists`, `/auth/me`, `/auth/telegram/link` | Bearer session |
+| `/scoring/rank` | public (текущий диагностический контракт) |
+| `/metrics/product` | `X-Metrics-Token` |
+
+Глобального rate limiting и idempotency keys нет.
+
 ## Auth: Device Flow
 
 ### `POST /api/v1/auth/device-flow/start`
@@ -46,9 +60,11 @@
 ```
 
 **Ошибки:**
-- `408` — таймаут (120 сек)
 - `400` — невалидный или истёкший `device_code`
 - `502` — Яндекс API недоступен
+
+HTTP endpoint выполняет один poll. Повторение с интервалом и общий таймаут
+реализует клиент; собственного ответа `408` endpoint не формирует.
 
 > Для отладки на стенде с разрывом сети (хост с прокси → контейнер с PostgreSQL) используйте CLI: `prompt-dj auth start` / `poll` и `make auth-poll`. См. [DEVELOPMENT.md](DEVELOPMENT.md).
 
@@ -272,6 +288,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
   "track_count": 25,
   "instrumental_only": false,
   "exclude_artists": ["Kavinsky"],
+  "exclude_languages": [],
   "diversity": "normal",
   "use_library": false,
   "source_id": null
@@ -284,6 +301,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 | `track_count` | int | нет | 25 | 1–50 |
 | `instrumental_only` | bool | нет | `false` | передаётся в LLM как `vocal_type: instrumental_only` |
 | `exclude_artists` | string[] | нет | `[]` | max 20; убирает артистов из якорей и кандидатов |
+| `exclude_languages` | string[] | нет | `[]` | max 5; API-only опция, текущий frontend её не отправляет |
 | `diversity` | `"normal"` \| `"high"` | нет | `"normal"` | `high` — жёстче diversity (1 трек/артист, 2 для якорей) |
 | `use_library` | bool | нет | `false` | soft bias: likes + recently played → доп. seeds + score boost; не hard filter |
 | `source_id` | UUID \| null | нет | `null` | своя генерация: reuse `MusicProfile`, LLM не вызывается; всегда **новый** плейлист в Яндексе |
@@ -324,6 +342,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
     "track_count": 25,
     "instrumental_only": false,
     "exclude_artists": ["Kavinsky"],
+    "exclude_languages": [],
     "diversity": "normal",
     "use_library": false
   },
@@ -365,7 +384,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 | `tracks[].similarity_score` | scoring | cosine similarity (embedding) или fallback-score; округление до 4 знаков |
 | `pool_stats` | retrieval + scoring | `raw` / `clean` (после pre-filter) / `selected`; диагностика полноты |
 | `profile` | LLM или reuse из `source_id` | полный `MusicProfile` после опций (`exclude_artists` и т.д.) |
-| `options` | запрос | `track_count`, `instrumental_only`, `exclude_artists`, `diversity`, `use_library` — для regen/history |
+| `options` | запрос | `track_count`, `instrumental_only`, `exclude_artists`, `exclude_languages`, `diversity`, `use_library` — для regen/history |
 | `warnings` | pipeline | напр. `exclude_artists` не сняты с якорей; сбой likes/recent при `use_library`; не блокирует `200`; persist в БД |
 | `source_id` | запрос / БД | `null` = новая генерация; иначе id родителя («Ещё вариант») |
 | `latency_ms` | pipeline | total ms пайплайна (persist) |
@@ -375,7 +394,7 @@ prompt → LLM (MusicProfile) | reuse profile (source_id)
 **Export (что происходит в Яндексе):**
 
 1. `users_playlists_create(title=profile.playlist_title)`
-2. `users_playlists_insert_track(kind, track_id, album_id, at=i, revision=…)` — по одному, `revision` обновляется после каждой вставки
+2. `users_playlists_change(...)` с одним `Difference.add_insert` для всех доступных треков
 3. `users_playlists_description(kind, description)` — описание из ответа API
 4. URL по `login` сессии и `kind` созданного плейлиста
 5. Persist в `playlist_generations` (история + product metrics: latency, `generation_cost`, warnings, pool_stats, source_id)
@@ -535,7 +554,7 @@ Like / dislike на результат генерации (свой id). Пов�
 
 ## Yandex Music API (SDK)
 
-Все вызовы — через `ClientAsync` ([yandex-music-api](https://github.com/MarshalX/yandex-music-api) v3+), обёртка `YandexMusicService` (`backend/app/services/yandex_music_service.py`). OAuth-токен пользователя хранится в сессии (Fernet), в браузер не отдаётся.
+Все вызовы — через `ClientAsync` ([yandex-music-api](https://github.com/MarshalX/yandex-music-api) v3+), фасад `YandexMusicService` и mixins в `backend/app/services/yandex/`. OAuth-токен пользователя хранится в сессии (Fernet), в браузер не отдаётся.
 
 **Поведение обёртки (для всех методов ниже):**
 
@@ -566,7 +585,8 @@ Like / dislike на результат генерации (свой id). Пов�
 | `expires_in` | `expires_in` |
 | `interval` | `interval` |
 
-Таймаут poll: 120 сек (`DEVICE_FLOW_TIMEOUT_SEC`).
+`DEVICE_FLOW_TIMEOUT_SEC=120` используется full-flow helper/CLI. REST endpoint
+`/auth/device-flow/poll` выполняет один запрос к провайдеру.
 
 ### Retrieval — сбор кандидатов
 
@@ -596,23 +616,12 @@ Like / dislike на результат генерации (свой id). Пов�
 | 4 | `users_playlists_description` | `(kind, description)` | `{playlist_description}\n\nПромпт: …` |
 | — | URL (не SDK) | — | `https://music.yandex.ru/users/{login}/playlists/{kind}` |
 
-**Важно для `insert_track`:** обязателен `album_id` (из `track.albums[0].id`). Треки без `album_id` пропускаются; если не осталось ни одного — `502` (`No tracks available for export`).
+**Важно для элемента diff:** обязателен `album_id` (из
+`track.albums[0].id`). Треки без `album_id` пропускаются; если не осталось ни
+одного — `502` (`No tracks available for export`).
 
-**Пример последовательности (псевдокод):**
-
-```python
-playlist = await client.users_playlists_create(title="Ночной неон")
-# playlist.kind == 1003, playlist.revision == 1
-
-for i, (track_id, album_id) in enumerate(refs):
-    playlist = await client.users_playlists_insert_track(
-        playlist.kind, track_id, album_id, at=i, revision=playlist.revision
-    )
-    # playlist.revision увеличивается на 1 после каждой вставки
-
-await client.users_playlists_description(playlist.kind, description)
-url = f"https://music.yandex.ru/users/{login}/playlists/{playlist.kind}"
-```
+Фактическая реализация формирует один diff для batch-вставки. Детали и
+совместимость SDK сверяются по `backend/app/services/yandex/export.py`.
 
 ### Сводка: какой REST → какие вызовы Яндекса
 
@@ -636,15 +645,11 @@ url = f"https://music.yandex.ru/users/{login}/playlists/{playlist.kind}"
 ```json
 {
   "status": "ok",
-  "version": "0.1.0",
-  "dependencies": {
-    "database": "ok",
-    "redis": "ok",
-    "llm": "ok",
-    "embeddings": "ok"
-  }
+  "version": "0.1.0"
 }
 ```
+
+Это liveness процесса, а не readiness: зависимости endpoint не проверяет.
 
 ---
 
@@ -691,20 +696,8 @@ curl -sS "http://localhost:8000/api/v1/metrics/product?days=7" \
 
 ---
 
-## Асинхронная генерация (опционально, Этап 5+)
+## Нереализованные контракты
 
-### `POST /api/v1/playlists/generate/async`
-
-Возвращает `task_id` для длительных запросов (>12 сек).
-
-### `GET /api/v1/playlists/tasks/{task_id}`
-
-```json
-{
-  "status": "processing",
-  "progress": "scoring",
-  "result": null
-}
-```
-
-Статусы: `pending` → `parsing` → `retrieving` → `scoring` → `exporting` → `completed` | `failed`.
+Async generate/task endpoints, idempotency keys, server-side logout/revoke и
+rate limiting отсутствуют. Их нельзя использовать как API до появления routes,
+schemas и tests в репозитории.

@@ -35,6 +35,13 @@ Prompt DJ: **Bearer `session_id`** (UUID из Device Flow).
 
 `auth-provider.tsx`: boot через `fetchMe()`; при 401 — сброс сессии. Logout — очистка `localStorage` + сброс TanStack Query / Zustand (`reset-client-state.ts`).
 
+Server-side revoke отсутствует; XSS trade-off `localStorage` описан в
+[SECURITY.md](SECURITY.md).
+
+`NEXT_PUBLIC_API_URL` встраивается в browser bundle во время `next build`.
+Runtime env уже собранного контейнера его не меняет; см.
+[CONFIGURATION.md](CONFIGURATION.md).
+
 ## Главный экран `/` (пользователь)
 
 Одна колонка генерации + история сбоку (чтобы форма и результат жили в одном окне):

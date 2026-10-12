@@ -1,25 +1,55 @@
 # Документация Prompt DJ
 
-## С чего начать
+## Маршруты чтения
 
-1. [SPEC.md](SPEC.md) — ТЗ, пайплайн, критерии.
-2. [PRODUCT.md](PRODUCT.md) — продуктовый разбор, ICP, metrics, бэклог P0–P3 (**следующий фокус**).
-3. [UNIT_ECONOMICS.md](UNIT_ECONOMICS.md) — COGS (Kodik), формулы, черновик монетизации.
-4. [STACK.md](STACK.md) — зафиксированный стек (backend + frontend).
-5. [ARCHITECTURE.md](ARCHITECTURE.md) — модули, latency, структура кода.
-6. [API.md](API.md) — REST-контракты FastAPI.
-7. [FRONTEND.md](FRONTEND.md) — маршруты, Device Flow UX, экран генерации.
-8. [REUSE_FROM_DOCWISE.md](REUSE_FROM_DOCWISE.md) — что копировать из соседнего `../docwise`.
-9. [CONVENTIONS.md](CONVENTIONS.md) — слои backend/frontend, соглашения.
-10. [DEVELOPMENT.md](DEVELOPMENT.md) — roadmap этапов 0–6 ✅ + чеклист этапа 7+ + техдолг.
-11. [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — качество плейлистов, golden, handoff для агентов.
-12. [INFRASTRUCTURE.md](INFRASTRUCTURE.md) — Docker, offline-сборка, ресурсы dev-машины.
+Новый инженер:
 
-Специализированные: [LLM_SCHEMA.md](LLM_SCHEMA.md), [YANDEX_MUSIC.md](YANDEX_MUSIC.md), [analytics/product_metrics.sql](analytics/product_metrics.sql).
+1. [корневой README](../README.md) — назначение и запуск;
+2. [ARCHITECTURE.md](ARCHITECTURE.md) — компоненты и data flow;
+3. [CONFIGURATION.md](CONFIGURATION.md) — environment;
+4. [TESTING.md](TESTING.md) — проверки и границы CI.
+
+Backend/API:
+
+- [API.md](API.md) — реализованные REST-контракты;
+- [DATABASE.md](DATABASE.md) — schema, migrations, transactions;
+- [LLM_SCHEMA.md](LLM_SCHEMA.md) — `MusicProfile`;
+- [YANDEX_MUSIC.md](YANDEX_MUSIC.md) — SDK boundary.
+
+Эксплуатация и безопасность:
+
+- [OPERATIONS.md](OPERATIONS.md) — Compose, startup, health, troubleshooting;
+- [SECURITY.md](SECURITY.md) — auth, secrets и trust boundaries;
+- [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) — приоритетные риски;
+- [DOCUMENTATION_AUDIT.md](DOCUMENTATION_AUDIT.md) — coverage и unresolved gaps.
+
+Frontend и продукт:
+
+- [FRONTEND.md](FRONTEND.md) — маршруты и Device Flow UX;
+- [TELEGRAM.md](TELEGRAM.md) — Mini App/bot и текущий E2E status;
+- [PRODUCT.md](PRODUCT.md) — единственный канон продуктового backlog;
+- [PLAYLIST_QUALITY.md](PLAYLIST_QUALITY.md) — golden и live quality;
+- [UNIT_ECONOMICS.md](UNIT_ECONOMICS.md) — COGS и продуктовые формулы.
+
+Справочные и исторические:
+
+- [SPEC.md](SPEC.md) — исходное ТЗ;
+- [STACK.md](STACK.md) — принятый стек;
+- [CONVENTIONS.md](CONVENTIONS.md) — code conventions;
+- [DEVELOPMENT.md](DEVELOPMENT.md) — история этапов и roadmap;
+- [INFRASTRUCTURE.md](INFRASTRUCTURE.md) — historical snapshot dev-машины;
+- [REUSE_FROM_DOCWISE.md](REUSE_FROM_DOCWISE.md) — provenance порта из внешнего
+  соседнего репозитория;
+- [analytics/product_metrics.sql](analytics/product_metrics.sql) — SQL-метрики.
+
+Правила contribution: [../CONTRIBUTING.md](../CONTRIBUTING.md). Инструкции
+coding agents: [../AGENTS.md](../AGENTS.md).
 
 ## Правила Cursor
 
-`.cursor/rules/` — `project.mdc` (всегда), `python.mdc`, `interfaces.mdc`, `frontend.mdc`. При противоречии сначала `docs/`, затем правила и код.
+`.cursor/rules/` — `project.mdc` (всегда), `python.mdc`, `interfaces.mdc`,
+`frontend.mdc`. При расхождении код, migrations и executable configuration
+имеют приоритет над документацией; расхождение нужно исправить в том же change.
 
 ## Инварианты
 

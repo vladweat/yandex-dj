@@ -3,7 +3,7 @@
 ## Запуск
 
 ```bash
-make up              # api + db + redis в Docker
+make up              # весь Compose: api, db, redis, bot, frontend
 make migrate         # alembic в контейнере (как docwise)
 make test            # pytest в контейнере
 
@@ -29,6 +29,12 @@ prompt-dj retrieval fetch --prompt "dark synthwave" --token "$YANDEX_OAUTH_TOKEN
 
 # Scoring (LLM → retrieval → rank)
 prompt-dj scoring rank --prompt "dark synthwave for night coding" --token "$YANDEX_OAUTH_TOKEN"
+
+# Полный pipeline с export
+prompt-dj playlist generate --help
+
+# Полный перечень
+prompt-dj --help
 ```
 
 Контракты HTTP: [docs/API.md](../docs/API.md).
@@ -75,7 +81,9 @@ Alembic использует sync URL (`postgresql+psycopg2://...`) автома
 ## Dev
 
 ```bash
-pytest
+export TOKEN_ENCRYPTION_KEY="$(python -c \
+  'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+python -m pytest tests/ -q
 ruff check app tests
 ```
 
@@ -91,4 +99,6 @@ make venv          # venv + модель e5-base + libgomp
 make build && make up
 ```
 
-См. [docs/INFRASTRUCTURE.md](../docs/INFRASTRUCTURE.md)
+См. [docs/OPERATIONS.md](../docs/OPERATIONS.md),
+[docs/CONFIGURATION.md](../docs/CONFIGURATION.md) и
+[docs/TESTING.md](../docs/TESTING.md).

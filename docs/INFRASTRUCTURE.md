@@ -1,6 +1,8 @@
 # Инфраструктура и окружение
 
-Снимок состояния dev-машины на момент старта проекта (2026-09-14).
+> Historical snapshot состояния одной dev-машины на 2026-09-14. Это не
+> системные требования и не production topology. Актуальные сборка, services,
+> health и troubleshooting описаны в [OPERATIONS.md](OPERATIONS.md).
 
 ## Системные ресурсы
 
@@ -8,7 +10,7 @@
 |----------|----------|-------------------|
 | CPU | 4 ядра | Параллельный сбор кандидатов, батчевая векторизация |
 | RAM | 3.8 GiB (доступно ~2.6 GiB) | Ограничение: тяжёлые LLM локально; предпочесть `gpt-4o-mini` API или лёгкие модели |
-| Диск | 9.4 GiB свободно (83% занято) | `bge-m3` (~2 GB) + зависимости — следить за местом |
+| Диск | 9.4 GiB свободно (83% занято) | embedding-модель и зависимости требуют контроля места |
 | Python | 3.12.3 | Совместим с требованием 3.11+ |
 | Docker | 29.8.0 | Готов к контейнеризации |
 | Docker Compose | v5.5.1 | Готов к `docker-compose.yml` |
@@ -28,7 +30,7 @@
 | `python:3.12-slim` | 179 MB | Базовый образ бэкенда |
 | `postgres:15` | 633 MB | PostgreSQL (продакшен) |
 | `redis:7` | 170 MB | Кэш метаданных треков (TTL) |
-| `nginx:alpine` | 93.6 MB | Reverse proxy для FastAPI + Next.js |
+| `nginx:alpine` | 93.6 MB | Был доступен на машине; в Prompt DJ Compose не используется |
 | `node:20-alpine` | 194 MB | Сборка фронтенда Next.js |
 
 Другие образы на машине (`chainwise-*`, `landlords-*`, `docwise-*`, `qdrant`, `minio`) — из других проектов, для MVP Prompt DJ не требуются.
@@ -38,7 +40,7 @@
 Учитывая 3.8 GiB RAM, для локальной разработки:
 
 ```yaml
-# docker-compose.yml (текущий + планируемый frontend)
+# Упрощённый historical fragment; не копировать вместо текущего docker-compose.yml.
 services:
   api:
     image: prompt-dj-api

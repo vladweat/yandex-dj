@@ -3,8 +3,9 @@
 Документация по интеграции с [yandex-music-api](https://github.com/MarshalX/yandex-music-api) v3+.  
 Справочник «наш REST → SDK» — [API.md](API.md) § Yandex Music API.
 
-**Обёртка в коде:** `YandexMusicService` (`backend/app/services/yandex_music_service.py`).  
-Прямые вызовы `ClientAsync` вне сервиса — только в CLI для отладки.
+**Обёртка в коде:** фасад `backend/app/services/yandex_music_service.py` и
+mixins в `backend/app/services/yandex/`. Endpoints не вызывают `ClientAsync`
+напрямую.
 
 ## Авторизация (OAuth Device Flow)
 
@@ -107,7 +108,7 @@ def track_passport(track) -> str:
 
 ```text
 users_playlists_create(title: str, visibility: str = "public") → Playlist
-users_playlists_insert_track(kind, track_id, album_id, at=0, revision=1) → Playlist
+users_playlists_change(kind, diff, revision) → Playlist
 users_playlists_description(kind, description: str) → Playlist
 tracks(track_ids: list) → list[Track]   # для album_id
 ```
@@ -119,15 +120,13 @@ playlist = await client.users_playlists_create(title=profile.playlist_title)
 # playlist.kind, playlist.revision
 
 refs = []  # (track_id, album_id) — album_id из tracks()[].albums[0].id
-for i, (track_id, album_id) in enumerate(refs):
-    playlist = await client.users_playlists_insert_track(
-        playlist.kind,
-        track_id,
-        album_id,
-        at=i,
-        revision=playlist.revision,
-    )
-    # revision обновлять из ответа после КАЖДОЙ вставки
+tracks_payload = [{"id": track_id, "album_id": album_id} for track_id, album_id in refs]
+diff = Difference().add_insert(at=0, tracks=tracks_payload).to_json()
+playlist = await client.users_playlists_change(
+    playlist.kind,
+    diff,
+    revision=playlist.revision,
+)
 
 await client.users_playlists_description(playlist.kind, description)
 url = f"https://music.yandex.ru/users/{login}/playlists/{playlist.kind}"
@@ -138,8 +137,8 @@ url = f"https://music.yandex.ru/users/{login}/playlists/{playlist.kind}"
 **Обложка плейлиста:** export меняет только title, треки и description. AI-обложка (P2.2) хранится локально в Prompt DJ и **не** отправляется в API Яндекса — в клиенте Яндекс Музыки пользователь видит стандартную обложку (мозаика из треков). См. [API.md](API.md) § `GET /playlists/{id}/cover`.
 
 **Ограничения:**
-- `album_id` обязателен для `insert_track`; треки без альбома пропускаются
-- вставка по одному треку (revision optimistic locking)
+- `album_id` обязателен для элемента diff; треки без альбома пропускаются
+- треки вставляются одним change diff с optimistic revision
 - `login` для URL — из `Session.user.login`, не из SDK
 
 ## Паттерны в коде
@@ -157,4 +156,4 @@ url = f"https://music.yandex.ru/users/{login}/playlists/{playlist.kind}"
 |------------|----------------|-----|
 | `YandexMusicError` | `502` / `503` | retrieval, export, yandex account |
 | `ExportError` | `502` | export (нет треков, битый playlist) |
-| `DeviceAuthError` | `400` / `408` | device-flow poll |
+| `DeviceAuthError` | `400` | device-flow poll |
