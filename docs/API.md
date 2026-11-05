@@ -1,0 +1,697 @@
+# REST API (FastAPI)
+
+Базовый URL: `/api/v1`
+
+Авторизация сессии: `Authorization: Bearer <session_id>`
+
+Источник runtime-контракта — Pydantic schemas и routes в
+`backend/app/api/v1/endpoints/`; интерактивная схема доступна на `/docs`, JSON —
+на `/openapi.json`. Этот файл объясняет семантику и должен обновляться вместе с
+кодом, но не заменяет сгенерированный OpenAPI.
+
+| Группа | Auth |
+|---|---|
+| `/health`, `/auth/device-flow/*` | public |
+| `/llm`, `/retrieval`, `/yandex`, `/playlists`, `/auth/me`, `/auth/telegram/link` | Bearer session |
+| `/scoring/rank` | public (текущий диагностический контракт) |
+| `/metrics/product` | `X-Metrics-Token` |
+
+
+## Auth: Device Flow
+
+### `POST /api/v1/auth/device-flow/start`
+
+Инициирует OAuth Device Flow.
+
+**Ответ `200`:**
+```json
+{
+  "device_code": "XXXX-XXXX",
+  "user_code": "ABCD-EFGH",
+  "verification_url": "https://passport.yandex.ru/auth/device",
+  "expires_in": 300,
+  "interval": 5
+}
+```
+
+### `POST /api/v1/auth/device-flow/poll`
+
+**Запрос:**
+```json
+{
+  "device_code": "XXXX-XXXX"
+}
+```
+
+**Ответ `200` (ожидание):**
+```json
+{
+  "status": "pending"
+}
+```
+
+**Ответ `200` (успех):**
+```json
+{
+  "status": "authenticated",
+  "session_id": "uuid4-token"
+}
+```
+
+**Ошибки:**
+- `400` — невалидный или истёкший `device_code`
+- `502` — Яндекс API недоступен
+
+HTTP endpoint выполняет один poll. Повторение с интервалом и общий таймаут
+реализует клиент; собственного ответа `408` endpoint не формирует.
+
+> CLI Device Flow требует исходящего доступа к Yandex Music API и доступного
+> `DATABASE_URL`. Общий локальный запуск описан в [OPERATIONS.md](OPERATIONS.md).
+
+### `GET /api/v1/auth/me`
+
+Профиль текущей сессии.
+
+**Headers:** `Authorization: Bearer <session_id>`
+
+**Ответ `200`:**
+```json
+{
+  "session_id": "uuid4",
+  "login": "username",
+  "yandex_uid": 411193386,
+  "expires_at": "2026-10-14T12:23:41.148639Z",
+  "telegram_user_id": null
+}
+```
+
+**Ошибки:**
+- `401` — невалидная или истёкшая сессия
+
+Используется Next.js UI при boot (`auth-provider`) и после Device Flow. См. [FRONTEND.md](FRONTEND.md).
+
+### `POST /api/v1/auth/telegram/link`
+
+Привязка Telegram-аккаунта к текущей сессии (Mini App `initData`).
+
+**Headers:** `Authorization: Bearer <session_id>`
+
+**Запрос:**
+```json
+{ "init_data": "<Telegram.WebApp.initData>" }
+```
+
+**Ответ `200`:** `{ "telegram_user_id": 123456789 }`
+
+**Ошибки:** `400` — невалидная подпись / истёкший `auth_date`; `401` — сессия.
+
+---
+
+## LLM (Prompt Understanding)
+
+### `POST /api/v1/llm/parse`
+
+Разбор текстового промпта в `MusicProfile` (OpenAI SDK + instructor; провайдер — [KodikRouter](https://kodikrouter.ru/docs/base) или OpenAI).
+
+**Headers:** `Authorization: Bearer <session_id>`
+
+**Запрос:**
+```json
+{
+  "prompt": "спокойная музыка для кодинга поздней ночью, эмбиент без слов",
+  "track_count": 25,
+  "instrumental_only": false
+}
+```
+
+| Поле | Тип | Обязательно | По умолчанию |
+|------|-----|-------------|--------------|
+| `prompt` | string | да | — |
+| `track_count` | int | нет | из LLM (обычно 25) |
+| `instrumental_only` | bool | нет | false |
+
+**Ответ `200`:**
+```json
+{
+  "profile": {
+    "playlist_title": "Ночной фокус",
+    "playlist_description": "Спокойный эмбиент и лоу-фай для глубокой концентрации",
+    "primary_genres": ["ambient", "lo-fi"],
+    "mood_tags": ["calm", "focused"],
+    "vocal_type": "instrumental_only",
+    "reference_artists": ["Tycho", "Nujabes", "Bonobo", "Helios"],
+    "search_queries": ["lo-fi beats study", "ambient coding night", "instrumental chill focus"],
+    "target_track_count": 25
+  }
+}
+```
+
+**Ошибки:**
+- `401` — невалидная или истёкшая сессия
+- `422` — пустой или слишком длинный промпт
+- `503` — LLM недоступен или `OPENAI_API_KEY` не задан
+
+CLI: `prompt-dj llm parse "…"`. Конфиг: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` (см. `.env.example`).
+
+---
+
+## Retrieval (Candidate Pool)
+
+### `POST /api/v1/retrieval/candidates`
+
+Сбор пула кандидатов из каталога Яндекс Музыки по `MusicProfile`.
+
+**Headers:** `Authorization: Bearer <session_id>`
+
+**Запрос:**
+```json
+{
+  "profile": { "...": "MusicProfile" },
+  "reference_track_id": "9442712"
+}
+```
+
+| Поле | Тип | Обязательно | По умолчанию |
+|------|-----|-------------|--------------|
+| `profile` | MusicProfile | да | — |
+| `reference_track_id` | string | нет | null |
+
+**Ответ `200`:**
+```json
+{
+  "count": 287,
+  "elapsed_ms": 3214,
+  "tracks": [
+    {
+      "id": "9442712",
+      "title": "Nightcall",
+      "artists": ["Kavinsky"],
+      "album": "OutRun",
+      "genre": "synthwave",
+      "version": "",
+      "duration_ms": 259000,
+      "available": true
+    }
+  ]
+}
+```
+
+**Ошибки:**
+- `401` — невалидная или истёкшая сессия
+- `503` — Яндекс API недоступен
+
+CLI: `prompt-dj retrieval fetch --prompt "…" --token "$YANDEX_OAUTH_TOKEN"`.
+
+---
+
+## Scoring (Ranking)
+
+### `POST /api/v1/scoring/rank`
+
+Ранжирование кандидатов: embeddings + diversity + fallback. Авторизация не требуется (кандидаты уже в теле запроса).
+
+**Запрос:**
+```json
+{
+  "profile": { "...": "MusicProfile" },
+  "candidates": [ { "id": "9442712", "title": "Nightcall", "artists": ["Kavinsky"] } ],
+  "prompt": "dark synthwave for night coding"
+}
+```
+
+| Поле | Тип | Обязательно | По умолчанию |
+|------|-----|-------------|--------------|
+| `profile` | MusicProfile | да | — |
+| `candidates` | TrackCandidate[] | да | min 1 |
+| `prompt` | string | нет | null — дополняет embedding query |
+
+**Ответ `200`:**
+```json
+{
+  "count": 25,
+  "elapsed_ms": 1842,
+  "method": "embedding",
+  "tracks": [
+    {
+      "id": "9442712",
+      "title": "Nightcall",
+      "artists": ["Kavinsky"],
+      "album": "OutRun",
+      "genre": "synthwave",
+      "duration_ms": 259000,
+      "score": 0.924
+    }
+  ]
+}
+```
+
+`method`: `"embedding"` | `"fallback"` (жанры + порядок retrieval, если модель недоступна).
+
+**Ошибки:**
+- `422` — пустой список кандидатов
+- `500` — внутренняя ошибка скоринга
+
+При недоступности модели сервис возвращает `200` с `"method": "fallback"` (жанры + reference artists).
+
+CLI: `prompt-dj scoring rank --prompt "…" --token "$YANDEX_OAUTH_TOKEN"` (полный пайплайн LLM → retrieval → scoring).
+
+---
+
+## Playlists
+
+### `POST /api/v1/playlists/generate`
+
+Единственная точка входа end-to-end пайплайна: промпт → плейлист в аккаунте Яндекс Музыки → запись в историю.
+
+**Пайплайн (синхронный, один HTTP-запрос):**
+
+```
+prompt → LLM (MusicProfile) | reuse profile (source_id)
+      → retrieval → scoring → export (Яндекс) → persist (playlist_generations)
+```
+
+| Этап | Сервис | OAuth Яндекса | Типичное время |
+|------|--------|---------------|----------------|
+| LLM | `LLMService.parse_prompt` (пропуск при `source_id`) | нет | 0–3 сек |
+| Retrieval | `RetrievalService.collect_candidates` | да (из сессии) | 2–4 сек |
+| Scoring | `ScoringService.rank` | нет | 1–2 сек (после warmup) |
+| Export | `YandexMusicService.export_playlist` | да | 1–3 сек |
+
+**Целевая latency:** 7–12 сек (промпт → `playlist_url`).
+
+**Headers:** `Authorization: Bearer <session_id>` (обязательно; OAuth-токен Яндекса берётся из сессии на сервере). Опционально `X-Client-Channel: telegram` (Mini App) — persist в `playlist_generations.client_channel` и product metrics.
+
+**Запрос:**
+```json
+{
+  "prompt": "Саундтрек для ночной поездки по пустому шоссе в стиле нео-нуар и синтвейв",
+  "track_count": 25,
+  "instrumental_only": false,
+  "exclude_artists": ["Kavinsky"],
+  "exclude_languages": [],
+  "diversity": "normal",
+  "use_library": false,
+  "source_id": null
+}
+```
+
+| Поле | Тип | Обязательно | По умолчанию | Ограничения |
+|------|-----|-------------|--------------|-------------|
+| `prompt` | string | да | — | 1–2000 символов |
+| `track_count` | int | нет | 25 | 1–50 |
+| `instrumental_only` | bool | нет | `false` | передаётся в LLM как `vocal_type: instrumental_only` |
+| `exclude_artists` | string[] | нет | `[]` | max 20; убирает артистов из якорей и кандидатов |
+| `exclude_languages` | string[] | нет | `[]` | max 5; API-only опция, текущий frontend её не отправляет |
+| `diversity` | `"normal"` \| `"high"` | нет | `"normal"` | `high` — жёстче diversity (1 трек/артист, 2 для якорей) |
+| `use_library` | bool | нет | `false` | soft bias: likes + recently played → доп. seeds + score boost; не hard filter |
+| `source_id` | UUID \| null | нет | `null` | своя генерация: reuse `MusicProfile`, LLM не вызывается; всегда **новый** плейлист в Яндексе |
+
+**Ответ `200`:**
+```json
+{
+  "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+  "prompt": "Саундтрек для ночной поездки…",
+  "title": "Ночной Неон: Пустое Шоссе",
+  "description": "Атмосферный синтвейв и ретровейв для ночной дороги\n\nПромпт: Саундтрек для ночной поездки…",
+  "playlist_url": "https://music.yandex.ru/users/username/playlists/1003",
+  "tracks": [
+    {
+      "id": "40133452",
+      "title": "Nightcall",
+      "artist": "Kavinsky",
+      "duration_ms": 259000,
+      "similarity_score": 0.89
+    }
+  ],
+  "pool_stats": {
+    "raw": 180,
+    "clean": 72,
+    "selected": 25
+  },
+  "profile": {
+    "playlist_title": "Ночной Неон: Пустое Шоссе",
+    "playlist_description": "Атмосферный синтвейв…",
+    "primary_genres": ["synthwave", "retrowave"],
+    "mood_tags": ["nocturnal", "atmospheric"],
+    "vocal_type": "any",
+    "reference_artists": ["Kavinsky", "Perturbator", "Gunship", "Timecop1983"],
+    "search_queries": ["synthwave night drive", "retrowave neon", "dark synth"],
+    "target_track_count": 25
+  },
+  "options": {
+    "track_count": 25,
+    "instrumental_only": false,
+    "exclude_artists": ["Kavinsky"],
+    "exclude_languages": [],
+    "diversity": "normal",
+    "use_library": false
+  },
+  "warnings": [],
+  "source_id": null,
+  "latency_ms": 8716,
+  "generation_cost": {
+    "llm": {
+      "prompt_tokens": 1820,
+      "completion_tokens": 640,
+      "total_tokens": 2460,
+      "requests": 1
+    },
+    "yandex": { "api_calls": 38 },
+    "cover": { "image_requests": 1 }
+  },
+  "feedback": null,
+  "has_cover": true
+}
+```
+
+| `has_cover` | cover art | `true`, если PNG сохранён; картинка — `GET /playlists/{id}/cover` |
+
+**Cover art:** параллельно retrieval/scoring/export — KodikRouter `POST /v1/images/generations`, модель **`qwen/qwen-image-3-pro`** (1:1, 1K по умолчанию); PNG в `COVER_STORAGE_DIR`; не блокирует `200`, если таймаут — warning.
+
+**Обложка в Яндекс Музыке:** export не загружает PNG в аккаунт — в приложении Яндекса остаётся их обложка плейлиста (мозаика из треков). AI-картинка только в Prompt DJ (`has_cover`, `GET …/cover`). В `yandex-music` SDK нет метода upload custom cover; отдельный спайк — только если появится документированный endpoint.
+
+**Семантика полей ответа:**
+
+| Поле | Источник | Примечание |
+|------|----------|------------|
+| `id` | PostgreSQL `playlist_generations` | id записи истории |
+| `prompt` | запрос | исходный промпт |
+| `title` | `MusicProfile.playlist_title` (LLM) | же название, что у плейлиста в Яндексе |
+| `description` | `playlist_description` + промпт | формат: `{описание}\n\nПромпт: {prompt}`; промпт не дублируется, если уже есть в описании |
+| `playlist_url` | export | `https://music.yandex.ru/users/{login}/playlists/{kind}`; `login` — из сессии |
+| `tracks` | scoring, в порядке релевантности | длина = `track_count` (или меньше при нехватке кандидатов) |
+| `tracks[].artist` | scoring | несколько исполнителей через `", "` |
+| `tracks[].similarity_score` | scoring | cosine similarity (embedding) или fallback-score; округление до 4 знаков |
+| `pool_stats` | retrieval + scoring | `raw` / `clean` (после pre-filter) / `selected`; диагностика полноты |
+| `profile` | LLM или reuse из `source_id` | полный `MusicProfile` после опций (`exclude_artists` и т.д.) |
+| `options` | запрос | `track_count`, `instrumental_only`, `exclude_artists`, `exclude_languages`, `diversity`, `use_library` — для regen/history |
+| `warnings` | pipeline | напр. `exclude_artists` не сняты с якорей; сбой likes/recent при `use_library`; не блокирует `200`; persist в БД |
+| `source_id` | запрос / БД | `null` = новая генерация; иначе id родителя («Ещё вариант») |
+| `latency_ms` | pipeline | total ms пайплайна (persist) |
+| `generation_cost` | pipeline | LLM tokens, Yandex API calls и cover image requests; сохраняются в `playlist_generations.generation_cost` |
+| `feedback` | user | `"like"` \| `"dislike"` \| `null` |
+
+**Export (что происходит в Яндексе):**
+
+1. `users_playlists_create(title=profile.playlist_title)`
+2. `users_playlists_change(...)` с одним `Difference.add_insert` для всех доступных треков
+3. `users_playlists_description(kind, description)` — описание из ответа API
+4. URL по `login` сессии и `kind` созданного плейлиста
+5. Persist в `playlist_generations` (история + product metrics: latency, `generation_cost`, warnings, pool_stats, source_id)
+
+Подробности SDK: [YANDEX_MUSIC.md](YANDEX_MUSIC.md) § «Экспорт плейлиста».
+
+**Scoring внутри пайплайна:** при недоступности embedding-модели используется fallback (жанры + reference artists), но запрос всё равно завершается `200`, если export успешен. Поле `method` в ответ **не** включается (оно есть только у `POST /scoring/rank`).
+
+**Логи сервера (latency по этапам):**
+
+```
+Playlist pipeline: llm=2140ms retrieval=3214ms scoring=1842ms export=1520ms total=8716ms tracks=25 method=embedding raw=180 clean=72 selected=25 track_count=25 full_n=True warnings_count=0 diversity=normal use_library=False library_artists=0 source_id=None client_channel=web llm_tokens=2460 yandex_calls=38 cover_requests=1 id=…
+```
+
+`method`: `embedding` | `fallback`. Смотреть: `docker compose logs -f api` или `make logs`.
+
+Аналитика SQL: [analytics/product_metrics.sql](analytics/product_metrics.sql).  
+HTTP-отчёт: `GET /api/v1/metrics/product` — см. § Metrics ниже.
+
+**Ошибки:**
+
+| Код | Когда | `detail` (пример) |
+|-----|-------|-------------------|
+| `401` | нет/невалидный Bearer, истёкшая сессия | `Invalid or expired session` |
+| `404` | `source_id` не найден или чужой | `Source generation not found` |
+| `422` | пустой промпт, `track_count` вне 1–50, промпт > 2000 символов | Pydantic validation |
+| `504` | превышен `PIPELINE_TIMEOUT_SEC` (default 90) | `Playlist generation exceeded …s (PIPELINE_TIMEOUT_SEC)` |
+| `429` | soft-квота новых генераций/сутки (`DAILY_GENERATION_LIMIT`, default 10) | `{message, limit, used, remaining, resets_at}`; «Ещё вариант» (`source_id`) не считается |
+| `500` | scoring вернул 0 треков или внутренняя ошибка ранжирования | `Scoring returned no tracks` |
+| `502` | Яндекс API недоступен после retry, ошибка export (создание/вставка/описание) | текст исключения |
+| `503` | LLM недоступен (`OPENAI_API_KEY`), retrieval без кандидатов, сбой retrieval | `OPENAI_API_KEY is not configured`, `No candidates found for the prompt` |
+
+**Пример (curl):**
+
+```bash
+curl -sS -X POST http://localhost:8000/api/v1/playlists/generate \
+  -H "Authorization: Bearer $SESSION_ID" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "dark synthwave for night coding", "track_count": 25}'
+```
+
+`SESSION_ID` — из `POST /auth/device-flow/poll` (`session_id` в ответе) или `GET /auth/me`.
+
+**Отладка по этапам (без export):** отдельные эндпоинты `POST /llm/parse`, `POST /retrieval/candidates`, `POST /scoring/rank` или CLI `prompt-dj scoring rank --prompt "…" --token "$YANDEX_OAUTH_TOKEN"`.
+
+### `GET /api/v1/playlists/quota`
+
+Soft-квота новых генераций за текущие UTC-сутки (`DAILY_GENERATION_LIMIT`, default 10; `0` = без лимита). Считаются только записи с `source_id IS NULL` («Ещё вариант» не расходует).
+
+**Ответ `200`:**
+```json
+{
+  "limit": 10,
+  "used": 3,
+  "remaining": 7,
+  "unlimited": false,
+  "resets_at": "2026-09-18T00:00:00Z"
+}
+```
+
+### `GET /api/v1/playlists`
+
+Список генераций текущего пользователя (новые сверху).
+
+**Query:** `limit` (1–50, default 20), `offset` (default 0).
+
+**Ответ `200`:**
+```json
+{
+  "items": [
+    {
+      "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+      "prompt": "dark synthwave for night coding",
+      "title": "Ночной неон",
+      "playlist_url": "https://music.yandex.ru/users/username/playlists/1003",
+      "pool_stats": {"raw": 180, "clean": 72, "selected": 25},
+      "options": {
+        "track_count": 25,
+        "instrumental_only": false,
+        "exclude_artists": [],
+        "diversity": "high",
+        "use_library": false
+      },
+      "created_at": "2026-09-15T12:00:00Z",
+      "source_id": null,
+      "latency_ms": 8716,
+      "feedback": null
+    }
+  ],
+  "limit": 20,
+  "offset": 0
+}
+```
+
+### `GET /api/v1/playlists/{id}`
+
+Полная запись генерации (тот же контракт, что ответ `POST /generate`). Warnings читаются из БД.
+
+**Ошибки:** `401`, `404` (чужой или несуществующий id).
+
+### `GET /api/v1/playlists/{id}/cover`
+
+AI-обложка (PNG) для шаринга в UI. Не загружается в Яндекс — только Prompt DJ.
+
+**Headers:** `Authorization: Bearer <session_id>`.
+
+**Ответ `200`:** `Content-Type: image/png`, тело — бинарный PNG. **`404`:** обложки нет (`has_cover: false`) или чужой id.
+
+### `PATCH /api/v1/playlists/{id}/tracks`
+
+Убрать или заменить один трек в уже экспортированном плейлисте. Без LLM и без расхода дневной квоты. Плейлист в Яндексе обновляется по `yandex_kind`.
+
+**Запрос:**
+```json
+{
+  "track_id": "9442712",
+  "action": "replace"
+}
+```
+
+| Поле | Тип | Ограничения |
+|------|-----|-------------|
+| `track_id` | string | id трека из `tracks[]` |
+| `action` | `"remove"` \| `"replace"` | default `replace` |
+
+**Ответ `200`:** тот же контракт, что `POST /generate` (обновлённый `tracks[]`).
+
+**Ошибки:** `401`, `404` (чужой id / трек не в списке), `422` (нет замены, нельзя удалить последний трек).
+
+### `PATCH /api/v1/playlists/{id}/feedback`
+
+Like / dislike на результат генерации (свой id). Повторный тот же голос или `null` снимает оценку.
+
+**Запрос:**
+```json
+{
+  "value": "like"
+}
+```
+
+| Поле | Тип | Ограничения |
+|------|-----|-------------|
+| `value` | `"like"` \| `"dislike"` \| `null` | `null` — сброс |
+
+**Ответ `200`:**
+```json
+{
+  "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+  "feedback": "like",
+  "feedback_at": "2026-09-16T12:00:00Z"
+}
+```
+
+**Ошибки:** `401`, `404`, `422`.
+
+---
+
+## Yandex Music API (SDK)
+
+Все вызовы — через `ClientAsync` ([yandex-music-api](https://github.com/MarshalX/yandex-music-api) v3+), фасад `YandexMusicService` и mixins в `backend/app/services/yandex/`. OAuth-токен пользователя хранится в сессии (Fernet), в браузер не отдаётся.
+
+**Поведение обёртки (для всех методов ниже):**
+
+| Параметр | Значение по умолчанию | Env |
+|----------|----------------------|-----|
+| Пауза между запросами | 150 ms | `YANDEX_RATE_LIMIT_DELAY_SEC` |
+| Retry при сетевых ошибках | 3 попытки, exponential backoff | `YANDEX_API_MAX_RETRIES` |
+| Прокси | `HTTPS_PROXY` / `HTTP_PROXY` | см. `.env.example` |
+| Исключения | `YandexMusicError` → HTTP `502`/`503` | — |
+
+### Auth — OAuth Device Flow
+
+| Метод SDK (`ClientAsync`) | Обёртка | Наш REST | Назначение |
+|---------------------------|---------|----------|------------|
+| `request_device_code()` | `request_device_code` | `POST /auth/device-flow/start` | Код для пользователя |
+| `poll_device_token(device_code)` | `poll_device_token` | `POST /auth/device-flow/poll` | Опрос до `access_token` |
+| `device_auth(on_code, timeout)` | `device_auth` | CLI `auth login` | Обёртка start + poll |
+| `init()` | `init_client(token)` | — (внутри retrieval/export) | Инициализация клиента с токеном |
+| `account_status()` | `get_account_status` | `GET /yandex/account`, `GET /auth/me` | `uid`, `login` для сессии и URL |
+
+**Ответ `request_device_code` → наш `DeviceFlowStartResponse`:**
+
+| Поле SDK | Поле REST |
+|----------|-----------|
+| `device_code` | `device_code` |
+| `user_code` | `user_code` |
+| `verification_url` | `verification_url` |
+| `expires_in` | `expires_in` |
+| `interval` | `interval` |
+
+`DEVICE_FLOW_TIMEOUT_SEC=120` используется full-flow helper/CLI. REST endpoint
+`/auth/device-flow/poll` выполняет один запрос к провайдеру.
+
+### Retrieval — сбор кандидатов
+
+Вызывается из `RetrievalService.collect_candidates` (`POST /retrieval/candidates`, этап retrieval в `/playlists/generate`). Запросы по `MusicProfile` — **параллельно** (`asyncio.gather`).
+
+| Метод SDK | Обёртка | Источник данных | Лимиты (defaults) |
+|-----------|---------|-----------------|-------------------|
+| `search(query, type_="track", page=N)` | `search_tracks` | `profile.search_queries` (+ expand) | 50 треков × 2 страницы на запрос |
+| `search(name, type_="artist")` | `search_artist_id` | `profile.reference_artists` | первый результат |
+| `artists_tracks(artist_id, page=0, page_size=N)` | `artists_top_tracks` | после `search_artist_id` | 10 треков на артиста |
+| `tracks_similar(track_id)` | `tracks_similar_list` | `reference_track_id` (опционально) | все similar |
+| `tracks(track_ids)` | `fetch_tracks` | обогащение кэша (album, genre, `available`) | batch по missing ids |
+
+**Нормализация пула:** дедуп по `id` и `artist|title`, пропуск `available=False`. Цель: 150–300 кандидатов (`TARGET_CANDIDATES_POOL`, `MAX_CANDIDATES`).
+
+**Кэш:** Redis, ключи по `track_id`, TTL 24h (`TRACK_CACHE_TTL_SEC`) — метод `tracks()` не дергается повторно для известных id.
+
+### Export — создание плейлиста
+
+Вызывается из `YandexMusicService.export_playlist` (этап export в `/playlists/generate`). Порядок **строгий**:
+
+| # | Метод SDK | Сигнатура (ключевые аргументы) | Что передаём |
+|---|-----------|-------------------------------|--------------|
+| 1 | `users_playlists_create` | `(title, visibility="public")` | `profile.playlist_title` |
+| 2 | `tracks` | `(track_ids)` | resolve `album_id` для каждого ranked track |
+| 3 | `users_playlists_change` + `Difference.add_insert` | все треки одним diff | вместо N× `insert_track` (latency) |
+| 4 | `users_playlists_description` | `(kind, description)` | `{playlist_description}\n\nПромпт: …` |
+| — | URL (не SDK) | — | `https://music.yandex.ru/users/{login}/playlists/{kind}` |
+
+**Важно для элемента diff:** обязателен `album_id` (из
+`track.albums[0].id`). Треки без `album_id` пропускаются; если не осталось ни
+одного — `502` (`No tracks available for export`).
+
+Фактическая реализация формирует один diff для batch-вставки. Детали и
+совместимость SDK сверяются по `backend/app/services/yandex/export.py`.
+
+### Сводка: какой REST → какие вызовы Яндекса
+
+| Наш endpoint | Методы SDK (типичный набор) |
+|--------------|----------------------------|
+| `POST /auth/device-flow/start` | `request_device_code` |
+| `POST /auth/device-flow/poll` | `poll_device_token`, `init`, `account_status` |
+| `GET /auth/me` | — (данные из БД; токен не раскрывается) |
+| `GET /yandex/account` | `init`, `account_status` |
+| `POST /retrieval/candidates` | `init`, `search`×N, `artists_tracks`×4, `tracks_similar`?, `tracks` |
+| `POST /playlists/generate` | всё из retrieval + export (`users_playlists_*`, `tracks`) |
+
+Полная документация SDK, паспорт трека, нормализация: [YANDEX_MUSIC.md](YANDEX_MUSIC.md).
+
+---
+
+## Health
+
+### `GET /api/v1/health`
+
+```json
+{
+  "status": "ok",
+  "version": "0.1.0"
+}
+```
+
+Это liveness процесса, а не readiness: зависимости endpoint не проверяет.
+
+---
+
+## Metrics (admin)
+
+### `GET /api/v1/metrics/product`
+
+Агрегаты по `playlist_generations` за окно `days` (1–90, default 7).  
+Заголовок: `X-Metrics-Token: <METRICS_TOKEN>`. Без `METRICS_TOKEN` в env → `503`.
+
+```json
+{
+  "window_days": 7,
+  "total_generations": 42,
+  "latency_p50_ms": 8200.0,
+  "latency_p95_ms": 14500.0,
+  "latency_avg_ms": 9100.0,
+  "full_n_rate": 0.93,
+  "warnings_rate": 0.12,
+  "regen_rate": 0.28,
+  "return_7d": 0.35,
+  "like_rate": 0.7,
+  "dislike_rate": 0.3,
+  "avg_clean": 58.2,
+  "with_latency": 40,
+  "with_feedback": 10,
+  "regen_count": 12,
+  "returning_users": 7,
+  "active_users": 20,
+  "generations_telegram": 3,
+  "generations_web": 39,
+  "with_cost": 42,
+  "avg_llm_total_tokens": 2380.5,
+  "avg_yandex_api_calls": 36.2
+}
+```
+
+```bash
+curl -sS "http://localhost:8000/api/v1/metrics/product?days=7" \
+  -H "X-Metrics-Token: $METRICS_TOKEN" | jq .
+```
+
+Эквивалент SQL: [analytics/product_metrics.sql](analytics/product_metrics.sql).
+
+---
