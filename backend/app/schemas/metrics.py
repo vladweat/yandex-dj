@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class ProductMetricsResponse(BaseModel):
-    """Aggregated product metrics over playlist_generations."""
+    """Aggregated product metrics over playlist_generations ."""
 
     window_days: int = Field(ge=1, le=90)
     total_generations: int

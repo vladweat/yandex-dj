@@ -13,5 +13,5 @@ async def product_metrics(
     service: MetricsService = Depends(get_metrics_service),
     days: int = Query(default=7, ge=1, le=90),
 ) -> ProductMetricsResponse:
-    """Admin report: p50/p95 latency, full-N, warnings, regen, return-7d."""
+    """Admin report: p50/p95 latency, full-N, warnings, regen, return-7d ."""
     return await service.product_metrics(days=days)

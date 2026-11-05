@@ -1,4 +1,4 @@
-"""Tests for GET /api/v1/metrics/product."""
+"""Tests for GET /api/v1/metrics/product ."""
 
 from __future__ import annotations
 

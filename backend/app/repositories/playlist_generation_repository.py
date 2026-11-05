@@ -32,7 +32,7 @@ class PlaylistGenerationRepository:
         return int(result.scalar_one())
 
     async def aggregate_product_metrics(self, *, since: datetime) -> dict[str, Any]:
-        """Single-window product report. Mirrors docs/analytics/product_metrics.sql."""
+        """Single-window product report Mirrors docs/analytics/product_metrics.sql."""
         result = await self._db.execute(
             text(
                 """

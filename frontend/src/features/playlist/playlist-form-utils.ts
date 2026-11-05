@@ -17,7 +17,7 @@ export const SAMPLE_PROMPTS = [
   "грустная музыка под дождь у окна",
 ] as const;
 
-/** Три ситуации для онбординга. */
+/** Три ситуации для онбординга . */
 export const ONBOARDING_SITUATIONS = [
   { title: "Кухня", prompt: SAMPLE_PROMPTS[0] },
   { title: "Работа", prompt: SAMPLE_PROMPTS[1] },
@@ -51,7 +51,7 @@ const SHARE_UTM = {
   campaign: "prompt_dj",
 } as const;
 
-/** Ожидание latency для UX. */
+/** Текст ожидания генерации для интерфейса. */
 export const GENERATION_LATENCY_HINT = "~12 сек";
 export const REGEN_LATENCY_HINT = "«Ещё вариант» — без LLM, обычно быстрее";
 
@@ -69,7 +69,7 @@ export function promptDeepLink(
   return origin ? `${origin}${path}` : path;
 }
 
-/** Текст для шаринга: промпт + deep link с UTMs. */
+/** Текст для шаринга: промпт + deep link с UTMs . */
 export function formatPromptShareText(prompt: string, url: string): string {
   const trimmed = prompt.trim();
   return trimmed ? `${trimmed}\n\n${url}` : url;

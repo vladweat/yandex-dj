@@ -164,7 +164,7 @@ class YandexExportMixin(YandexApiBase):
         kind: str | int,
         track_ids: Sequence[str | int],
     ) -> None:
-        """Полная замена треков в существующем плейлисте."""
+        """Полная замена треков в существующем плейлисте ."""
         track_refs = await self.resolve_track_refs(client, track_ids)
         if track_ids and not track_refs:
             raise ExportError("No tracks available for export")

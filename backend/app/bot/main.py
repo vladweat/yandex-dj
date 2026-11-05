@@ -1,4 +1,4 @@
-"""Thin Telegram bot: /start + Menu Web App button."""
+"""Thin Telegram bot: /start + Menu Web App button ."""
 
 import asyncio
 import logging
