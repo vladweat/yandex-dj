@@ -10,8 +10,8 @@ fi
 
 # Offline Docker (node:20-alpine): node_modules копируется с хоста, сеть в образе отключена.
 #
-# Проблема: в docwise gnu+musl бинарники лежат в dependencies. На glibc-хосте npm 10
-# падает с EBADPLATFORM на @next/swc-linux-x64-musl и т.п.
+# Проблема: npm 10 на glibc-хосте отклоняет musl-пакеты, если они указаны как
+# обязательные зависимости.
 #
 # Решение:
 #   1. gnu — dependencies (хост glibc: dev, typecheck, tsc)

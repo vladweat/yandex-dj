@@ -1,11 +1,11 @@
-from app.schemas.llm import MusicProfile
-from app.services.cover_art_service import build_cover_image_prompt, image_generate_kwargs
 from app.core.llm_config import (
     DEFAULT_KODIK_IMAGE_MODEL,
     DEFAULT_OPENAI_IMAGE_MODEL,
     resolve_openai_image_model,
     uses_qwen_image_model,
 )
+from app.schemas.llm import MusicProfile
+from app.services.cover_art_service import build_cover_image_prompt, image_generate_kwargs
 
 SAMPLE_PROFILE = MusicProfile(
     playlist_title="Ночной неон",

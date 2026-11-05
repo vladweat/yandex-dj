@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 backend/.venv/
+backend/.venv-test/
 backend/.libs/
 backend/.models/
 dist/

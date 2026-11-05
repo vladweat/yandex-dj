@@ -90,7 +90,7 @@ def auth() -> None:
 def _warn_if_no_proxy() -> None:
     if get_outbound_proxy_url() is None:
         click.echo(
-            "Подсказка: задайте HTTPS_PROXY (корпоративный прокси), см. .env.example.",
+            "Подсказка: если сеть требует outbound proxy, задайте HTTPS_PROXY.",
             err=True,
         )
 

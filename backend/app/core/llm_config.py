@@ -1,4 +1,4 @@
-"""OpenAI / KodikRouter client settings. Паттерн как в docwise."""
+"""OpenAI-compatible client settings."""
 
 from app.core.config import Settings, settings
 

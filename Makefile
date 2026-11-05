@@ -22,12 +22,12 @@ down:
 pack:
 	./scripts/pack-offline-bundle.sh
 
-# Инфраструктура — только в Makefile (как docwise)
+# Команды локальной инфраструктуры.
 migrate:
 	docker compose exec -T api python -m alembic upgrade head
 
 test:
-	docker compose exec -T api python -m pytest tests/ -q
+	./scripts/test-backend.sh
 
 logs:
 	docker compose logs -f api db

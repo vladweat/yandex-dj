@@ -1,7 +1,4 @@
-"""Корпоративный прокси: NO_PROXY для внутренних сервисов, HTTPS_PROXY для внешних API.
-
-Паттерн как в docwise: httpx/OpenAI читают env сами; yandex-music (aiohttp) — через proxy_url.
-"""
+"""Apply generic outbound proxy settings while bypassing local service hosts."""
 
 from __future__ import annotations
 

@@ -8,8 +8,8 @@ from yandex_music.exceptions import DeviceAuthError
 
 from app.core.config import settings
 from app.core.exceptions import AuthError
-from app.core.telegram_webapp import parse_telegram_user_id
 from app.core.security import encrypt_token
+from app.core.telegram_webapp import parse_telegram_user_id
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import DeviceFlowPollResponse, DeviceFlowStartResponse, TelegramLinkResponse

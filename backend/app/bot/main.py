@@ -17,7 +17,8 @@ router = Router()
 
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
-    logger.info("Received /start from telegram_user_id=%s", message.from_user.id if message.from_user else None)
+    telegram_user_id = message.from_user.id if message.from_user else None
+    logger.info("Received /start from telegram_user_id=%s", telegram_user_id)
     webapp_url = settings.telegram_web_app_url.strip()
     lines = [
         "Prompt DJ — опиши настроение, плейлист появится в Яндекс Музыке.",

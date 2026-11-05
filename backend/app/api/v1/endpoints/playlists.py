@@ -63,7 +63,11 @@ async def get_playlist_cover(
             detail="Cover not found",
         )
     data, media_type = payload
-    return Response(content=data, media_type=media_type, headers={"Cache-Control": "private, max-age=3600"})
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 
 @router.get("/{generation_id}", response_model=PlaylistGenerateResponse)

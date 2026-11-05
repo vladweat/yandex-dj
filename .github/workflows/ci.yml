@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 # Unit CI: ruff + pytest + frontend tsc/vitest.
 # No live Yandex/LLM/embeddings.
 
@@ -14,7 +17,6 @@ jobs:
       run:
         working-directory: backend
     env:
-      TOKEN_ENCRYPTION_KEY: "OXwvxxCx6Qtjc2aroVBuCO-fVwGIiru848R4Uj0qyl0="
       DATABASE_URL: postgresql+asyncpg://prompt_dj:prompt_dj@localhost/prompt_dj
       REDIS_URL: redis://localhost:6379/0
     steps:
@@ -26,6 +28,8 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
       - name: Install backend
         run: pip install -e ".[dev]"
+      - name: Generate test encryption key
+        run: python -c "from cryptography.fernet import Fernet; print('TOKEN_ENCRYPTION_KEY=' + Fernet.generate_key().decode())" >> "$GITHUB_ENV"
       - name: Ruff
         run: ruff check app tests
       - name: Pytest

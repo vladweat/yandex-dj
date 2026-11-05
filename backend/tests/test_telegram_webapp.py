@@ -5,7 +5,6 @@ import time
 from urllib.parse import urlencode
 
 import pytest
-
 from app.core.exceptions import AuthError
 from app.core.telegram_webapp import parse_telegram_user_id
 
